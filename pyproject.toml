@@ -1,7 +1,7 @@
 [project]
-name = "k8s-cli-toolbox"
-version = "0.5.0"
-description = "Add your description here"
+name = "kubebox"
+version = "0.6.0"
+description = "Read-only Kubernetes DevOps/SRE CLI toolbox with TUI dashboard"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [

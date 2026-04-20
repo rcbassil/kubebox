@@ -1,10 +1,13 @@
+import os
+import shlex
 import typer
+from typer.core import TyperGroup
 from rich.console import Console
+
 from rich.panel import Panel
 from prompt_toolkit import PromptSession, HTML
 from prompt_toolkit.completion import WordCompleter
 from prompt_toolkit.history import FileHistory
-import os
 
 from core.kubernetes import (
     check_crashloop_pods,
@@ -23,8 +26,18 @@ from core.events import check_events
 from core.network import check_network_status
 from core.rbac import check_rbac_status
 
+
+class _SortedGroup(TyperGroup):
+    def list_commands(self, ctx):
+        return sorted(super().list_commands(ctx))
+
+
 app = typer.Typer(
-    help="🤖 Read-Only Kubernetes DevOps/SRE Assistant Toolbox", no_args_is_help=True
+    help="🤖 Read-Only Kubernetes DevOps/SRE Assistant Toolbox",
+    no_args_is_help=True,
+    add_completion=False,
+    context_settings={"help_option_names": ["-h", "--help"]},
+    cls=_SortedGroup,
 )
 console = Console()
 
@@ -199,15 +212,6 @@ def rbac(
 
 
 @app.command()
-def verify_readonly():
-    """Run a check to confirm no mutative actions are allowed."""
-    from core.utils import run_cmd
-
-    console.print("[dim]Attempting a dummy mutative command to test blocks...[/dim]")
-    run_cmd(["kubectl", "apply", "-f", "dummy.yaml"])
-
-
-@app.command()
 def logs(
     name: str = typer.Argument(..., help="Name of the pod, deployment, or resource."),
     namespace: str = typer.Option(
@@ -242,16 +246,11 @@ def describe(
 @app.command()
 def interactive():
     """Interactive mode with autocomplete and history."""
-    import shlex
-
     history_file = os.path.expanduser("~/.k8s_tool_history")
 
-    # 1. Extract names, ensuring we skip None and convert everything to string
     command_names = [
         str(cmd.name) for cmd in app.registered_commands if cmd.name is not None
     ]
-
-    # 2. Build the final list for completion
     all_completions = command_names + ["exit", "quit", "help"]
 
     completer = WordCompleter(all_completions, ignore_case=True)
@@ -262,7 +261,7 @@ def interactive():
     while True:
         try:
             # session.prompt returns the string entered by the user
-            text = session.prompt(HTML("<cyan><b>k8s-assist> </b></cyan>"))
+            text = session.prompt(HTML("<cyan><b>kubebox> </b></cyan>"))
 
             if not text:
                 continue
@@ -271,7 +270,13 @@ def interactive():
             if cleaned_text.lower() in ("exit", "quit"):
                 break
 
-            # Execute the command
+            cmd = cleaned_text.split()[0].lower()
+            if cmd in ("dashboard", "interactive"):
+                console.print(
+                    f"[yellow]'{cmd}' cannot be run from interactive mode.[/yellow]"
+                )
+                continue
+
             app(shlex.split(cleaned_text))
 
         except SystemExit:
@@ -294,4 +299,4 @@ def dashboard():
 
 
 if __name__ == "__main__":
-    app()
+    app(prog_name="kubebox")

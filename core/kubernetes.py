@@ -114,238 +114,26 @@ def check_all_objects(namespace: str = None):
     scope = f"Namespace: {namespace}" if namespace else "Cluster-Wide"
     console.print(f"\n[bold blue]=== {scope} Object Diagnostics ===[/bold blue]")
 
+    v1 = client.CoreV1Api()
+
     if not namespace:
-        # Check 1: Nodes (Global only)
-        v1 = client.CoreV1Api()
-        nodes = v1.list_node().items
-        not_ready_nodes = []
-        for node in nodes:
-            ready = any(
-                c.type == "Ready" and c.status == "True" for c in node.status.conditions
-            )
-            if not ready:
-                not_ready_nodes.append(node.metadata.name)
+        _check_nodes(v1)
 
-        if not_ready_nodes:
-            console.print(
-                f"[bold red]⚠️  Found {len(not_ready_nodes)} NotReady nodes: {', '.join(not_ready_nodes)}[/bold red]"
-            )
-            print_tip(
-                "A node is NotReady if the Kubelet stopped posting status or if there's extreme memory/disk pressure.",
-                f"kubectl describe node {not_ready_nodes[0]}",
-            )
-        else:
-            console.print("[green]✓ All Nodes are Ready[/green]")
+    _check_pvcs(v1, namespace)
+    _check_workloads(namespace)
 
-        node_table = Table(
-            title="All Nodes", show_header=True, header_style="bold magenta"
-        )
-        node_table.add_column("Node", style="blue")
-        node_table.add_column("Status")
-        for node in nodes:
-            ready = any(
-                c.type == "Ready" and c.status == "True" for c in node.status.conditions
-            )
-            node_table.add_row(
-                node.metadata.name,
-                "[green]Ready[/green]" if ready else "[red]NotReady[/red]",
-            )
-        console.print(node_table)
-    else:
-        v1 = client.CoreV1Api()
-
-    # Check 2: PVCs not Bound
-    pvcs = (
-        v1.list_namespaced_persistent_volume_claim(namespace).items
-        if namespace
-        else v1.list_persistent_volume_claim_for_all_namespaces().items
-    )
-    unbound_pvcs = [
-        (p.metadata.namespace, p.metadata.name, p.status.phase)
-        for p in pvcs
-        if p.status.phase != "Bound"
-    ]
-
-    if unbound_pvcs:
-        fail_table = Table(
-            title="Unbound/Failing PVCs", show_header=True, header_style="bold magenta"
-        )
-        fail_table.add_column("Namespace", style="cyan")
-        fail_table.add_column("PVC Name", style="blue")
-        fail_table.add_column("Status", style="red")
-        for p in unbound_pvcs:
-            fail_table.add_row(p[0], p[1], p[2])
-        console.print(fail_table)
-        print_tip(
-            "Unbound PVCs indicate the StorageClass provisioner failed, the requested size is unavailable, or it is waiting for first consumer.",
-            f"kubectl describe pvc {unbound_pvcs[0][1]} -n {unbound_pvcs[0][0]}",
-        )
-    else:
-        console.print("[green]✓ All PersistentVolumeClaims are Bound[/green]")
-
-    if pvcs:
-        pvc_table = Table(
-            title="All PVCs", show_header=True, header_style="bold magenta"
-        )
-        pvc_table.add_column("Namespace", style="cyan")
-        pvc_table.add_column("PVC Name", style="blue")
-        pvc_table.add_column("Status")
-        pvc_table.add_column("Storage Class", style="dim")
-        for p in pvcs:
-            color = "green" if p.status.phase == "Bound" else "red"
-            pvc_table.add_row(
-                p.metadata.namespace,
-                p.metadata.name,
-                f"[{color}]{p.status.phase}[/{color}]",
-                p.spec.storage_class_name or "—",
-            )
-        console.print(pvc_table)
-
-    # Check 3: Check for Degraded Workloads (Deployments, StatefulSets, DaemonSets)
-    apps_v1 = client.AppsV1Api()
-    degraded = False
-    first_degraded = None
-
-    deps = (
-        apps_v1.list_namespaced_deployment(namespace).items
-        if namespace
-        else apps_v1.list_deployment_for_all_namespaces().items
-    )
-    sts = (
-        apps_v1.list_namespaced_stateful_set(namespace).items
-        if namespace
-        else apps_v1.list_stateful_set_for_all_namespaces().items
-    )
-    dss = (
-        apps_v1.list_namespaced_daemon_set(namespace).items
-        if namespace
-        else apps_v1.list_daemon_set_for_all_namespaces().items
-    )
-
-    fail_table = Table(
-        title="Degraded Workloads", show_header=True, header_style="bold magenta"
-    )
-    fail_table.add_column("Type", style="yellow")
-    fail_table.add_column("Namespace", style="cyan")
-    fail_table.add_column("Name", style="blue")
-    fail_table.add_column("Ready/Desired", style="red")
-
-    for d in deps:
-        if d.spec.replicas and (d.status.ready_replicas or 0) != d.spec.replicas:
-            fail_table.add_row(
-                "Deployment",
-                d.metadata.namespace,
-                d.metadata.name,
-                f"{d.status.ready_replicas or 0}/{d.spec.replicas}",
-            )
-            if not first_degraded:
-                first_degraded = ("deployment", d.metadata.name, d.metadata.namespace)
-            degraded = True
-    for s in sts:
-        if s.spec.replicas and (s.status.ready_replicas or 0) != s.spec.replicas:
-            fail_table.add_row(
-                "StatefulSet",
-                s.metadata.namespace,
-                s.metadata.name,
-                f"{s.status.ready_replicas or 0}/{s.spec.replicas}",
-            )
-            if not first_degraded:
-                first_degraded = ("statefulset", s.metadata.name, s.metadata.namespace)
-            degraded = True
-    for ds in dss:
-        desired = ds.status.desired_number_scheduled or 0
-        ready = ds.status.number_ready or 0
-        if desired and ready != desired:
-            fail_table.add_row(
-                "DaemonSet",
-                ds.metadata.namespace,
-                ds.metadata.name,
-                f"{ready}/{desired}",
-            )
-            if not first_degraded:
-                first_degraded = ("daemonset", ds.metadata.name, ds.metadata.namespace)
-            degraded = True
-
-    if degraded:
-        console.print(fail_table)
-        if first_degraded:
-            kind, name, ns = first_degraded
-            print_tip(
-                "Workloads missing replicas usually suffer from inadequate node capacity, persistent volume locks, or image pull errors.",
-                f"kubectl describe {kind} {name} -n {ns}",
-            )
-    else:
-        console.print(
-            "[green]✓ All Workloads (Deployments/StatefulSets/DaemonSets) have desired replicas ready[/green]"
-        )
-
-    all_workloads = Table(
-        title="All Workloads", show_header=True, header_style="bold magenta"
-    )
-    all_workloads.add_column("Type", style="yellow")
-    all_workloads.add_column("Namespace", style="cyan")
-    all_workloads.add_column("Name", style="blue")
-    all_workloads.add_column("Ready/Desired")
-    for d in deps:
-        desired = d.spec.replicas or 0
-        ready = d.status.ready_replicas or 0
-        color = "green" if ready == desired else "red"
-        all_workloads.add_row(
-            "Deployment",
-            d.metadata.namespace,
-            d.metadata.name,
-            f"[{color}]{ready}/{desired}[/{color}]",
-        )
-    for s in sts:
-        desired = s.spec.replicas or 0
-        ready = s.status.ready_replicas or 0
-        color = "green" if ready == desired else "red"
-        all_workloads.add_row(
-            "StatefulSet",
-            s.metadata.namespace,
-            s.metadata.name,
-            f"[{color}]{ready}/{desired}[/{color}]",
-        )
-    for ds in dss:
-        desired = ds.status.desired_number_scheduled or 0
-        ready = ds.status.number_ready or 0
-        color = "green" if ready == desired else "red"
-        all_workloads.add_row(
-            "DaemonSet",
-            ds.metadata.namespace,
-            ds.metadata.name,
-            f"[{color}]{ready}/{desired}[/{color}]",
-        )
-    if deps or sts or dss:
-        console.print(all_workloads)
-
-    # Check 4: Services
     _check_services(v1, namespace)
-
-    # Check 5: Ingresses
     _check_ingresses(namespace)
-
-    # Check 6: Jobs & CronJobs
     _check_jobs(namespace)
-
-    # Check 7: HPAs
     _check_hpas(namespace)
 
-    # Check 8: PersistentVolumes (global only)
     if not namespace:
         _check_persistent_volumes(v1)
-
-    # Check 9: Namespaces (global only)
-    if not namespace:
         _check_namespaces(v1)
 
-    # Check 10: ConfigMaps
     _check_configmaps(v1, namespace)
-
-    # Check 11: Secrets (names and types only — values never shown)
     _check_secrets(v1, namespace)
 
-    # Check 7: The Ultimate Catch-All -> K8s Warning Events in the last 15m
     console.print(
         "\n[bold yellow]Gathering Recent Warnings (All Object Types)...[/bold yellow]"
     )
@@ -488,6 +276,205 @@ def _suggest_from_events(items: list):
 
 
 _SYSTEM_NAMESPACES = {"kube-system", "kube-public", "kube-node-lease"}
+
+
+def _check_nodes(v1):
+    nodes = v1.list_node().items
+    node_ready = {
+        n.metadata.name: any(
+            c.type == "Ready" and c.status == "True" for c in n.status.conditions
+        )
+        for n in nodes
+    }
+    not_ready = [name for name, ready in node_ready.items() if not ready]
+    if not_ready:
+        console.print(
+            f"[bold red]⚠️  Found {len(not_ready)} NotReady nodes: {', '.join(not_ready)}[/bold red]"
+        )
+        print_tip(
+            "A node is NotReady if the Kubelet stopped posting status or if there's extreme memory/disk pressure.",
+            f"kubectl describe node {not_ready[0]}",
+        )
+    else:
+        console.print("[green]✓ All Nodes are Ready[/green]")
+
+    table = Table(title="All Nodes", show_header=True, header_style="bold magenta")
+    table.add_column("Node", style="blue")
+    table.add_column("Status")
+    for n in nodes:
+        ready = node_ready[n.metadata.name]
+        table.add_row(
+            n.metadata.name, "[green]Ready[/green]" if ready else "[red]NotReady[/red]"
+        )
+    console.print(table)
+
+
+def _check_pvcs(v1, namespace: str = None):
+    pvcs = (
+        v1.list_namespaced_persistent_volume_claim(namespace).items
+        if namespace
+        else v1.list_persistent_volume_claim_for_all_namespaces().items
+    )
+    unbound = [
+        (p.metadata.namespace, p.metadata.name, p.status.phase)
+        for p in pvcs
+        if p.status.phase != "Bound"
+    ]
+    if unbound:
+        fail_table = Table(
+            title="Unbound/Failing PVCs", show_header=True, header_style="bold magenta"
+        )
+        fail_table.add_column("Namespace", style="cyan")
+        fail_table.add_column("PVC Name", style="blue")
+        fail_table.add_column("Status", style="red")
+        for p in unbound:
+            fail_table.add_row(p[0], p[1], p[2])
+        console.print(fail_table)
+        print_tip(
+            "Unbound PVCs indicate the StorageClass provisioner failed, the requested size is unavailable, or it is waiting for first consumer.",
+            f"kubectl describe pvc {unbound[0][1]} -n {unbound[0][0]}",
+        )
+    else:
+        console.print("[green]✓ All PersistentVolumeClaims are Bound[/green]")
+
+    if pvcs:
+        table = Table(title="All PVCs", show_header=True, header_style="bold magenta")
+        table.add_column("Namespace", style="cyan")
+        table.add_column("PVC Name", style="blue")
+        table.add_column("Status")
+        table.add_column("Storage Class", style="dim")
+        for p in pvcs:
+            color = "green" if p.status.phase == "Bound" else "red"
+            table.add_row(
+                p.metadata.namespace,
+                p.metadata.name,
+                f"[{color}]{p.status.phase}[/{color}]",
+                p.spec.storage_class_name or "—",
+            )
+        console.print(table)
+
+
+def _check_workloads(namespace: str = None):
+    apps_v1 = client.AppsV1Api()
+    deps = (
+        apps_v1.list_namespaced_deployment(namespace).items
+        if namespace
+        else apps_v1.list_deployment_for_all_namespaces().items
+    )
+    sts = (
+        apps_v1.list_namespaced_stateful_set(namespace).items
+        if namespace
+        else apps_v1.list_stateful_set_for_all_namespaces().items
+    )
+    dss = (
+        apps_v1.list_namespaced_daemon_set(namespace).items
+        if namespace
+        else apps_v1.list_daemon_set_for_all_namespaces().items
+    )
+
+    degraded = False
+    first_degraded = None
+    fail_table = Table(
+        title="Degraded Workloads", show_header=True, header_style="bold magenta"
+    )
+    fail_table.add_column("Type", style="yellow")
+    fail_table.add_column("Namespace", style="cyan")
+    fail_table.add_column("Name", style="blue")
+    fail_table.add_column("Ready/Desired", style="red")
+
+    for d in deps:
+        if d.spec.replicas and (d.status.ready_replicas or 0) != d.spec.replicas:
+            fail_table.add_row(
+                "Deployment",
+                d.metadata.namespace,
+                d.metadata.name,
+                f"{d.status.ready_replicas or 0}/{d.spec.replicas}",
+            )
+            first_degraded = first_degraded or (
+                "deployment",
+                d.metadata.name,
+                d.metadata.namespace,
+            )
+            degraded = True
+    for s in sts:
+        if s.spec.replicas and (s.status.ready_replicas or 0) != s.spec.replicas:
+            fail_table.add_row(
+                "StatefulSet",
+                s.metadata.namespace,
+                s.metadata.name,
+                f"{s.status.ready_replicas or 0}/{s.spec.replicas}",
+            )
+            first_degraded = first_degraded or (
+                "statefulset",
+                s.metadata.name,
+                s.metadata.namespace,
+            )
+            degraded = True
+    for ds in dss:
+        desired = ds.status.desired_number_scheduled or 0
+        ready = ds.status.number_ready or 0
+        if desired and ready != desired:
+            fail_table.add_row(
+                "DaemonSet",
+                ds.metadata.namespace,
+                ds.metadata.name,
+                f"{ready}/{desired}",
+            )
+            first_degraded = first_degraded or (
+                "daemonset",
+                ds.metadata.name,
+                ds.metadata.namespace,
+            )
+            degraded = True
+
+    if degraded:
+        console.print(fail_table)
+        kind, name, ns = first_degraded
+        print_tip(
+            "Workloads missing replicas usually suffer from inadequate node capacity, persistent volume locks, or image pull errors.",
+            f"kubectl describe {kind} {name} -n {ns}",
+        )
+    else:
+        console.print(
+            "[green]✓ All Workloads (Deployments/StatefulSets/DaemonSets) have desired replicas ready[/green]"
+        )
+
+    all_table = Table(
+        title="All Workloads", show_header=True, header_style="bold magenta"
+    )
+    all_table.add_column("Type", style="yellow")
+    all_table.add_column("Namespace", style="cyan")
+    all_table.add_column("Name", style="blue")
+    all_table.add_column("Ready/Desired")
+    for d in deps:
+        des, rdy = d.spec.replicas or 0, d.status.ready_replicas or 0
+        color = "green" if rdy == des else "red"
+        all_table.add_row(
+            "Deployment",
+            d.metadata.namespace,
+            d.metadata.name,
+            f"[{color}]{rdy}/{des}[/{color}]",
+        )
+    for s in sts:
+        des, rdy = s.spec.replicas or 0, s.status.ready_replicas or 0
+        color = "green" if rdy == des else "red"
+        all_table.add_row(
+            "StatefulSet",
+            s.metadata.namespace,
+            s.metadata.name,
+            f"[{color}]{rdy}/{des}[/{color}]",
+        )
+    for ds in dss:
+        des, rdy = ds.status.desired_number_scheduled or 0, ds.status.number_ready or 0
+        color = "green" if rdy == des else "red"
+        all_table.add_row(
+            "DaemonSet",
+            ds.metadata.namespace,
+            ds.metadata.name,
+            f"[{color}]{rdy}/{des}[/{color}]",
+        )
+    if deps or sts or dss:
+        console.print(all_table)
 
 
 def _check_services(v1, namespace: str = None):

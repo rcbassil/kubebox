@@ -4,6 +4,7 @@ import shlex
 from contextlib import redirect_stdout
 
 from rich.text import Text
+from textual import work
 from textual.app import App, ComposeResult
 from textual.widgets import (
     Header,
@@ -29,6 +30,9 @@ def _usage_hint(cmd_name: str, callback) -> str:
         if hasattr(d, "default"):
             if d.default is ...:
                 parts.append(f"<{pname}>")
+            elif hasattr(d, "param_decls") and d.param_decls:
+                flag = d.param_decls[0]
+                parts.append(f"[{flag} <{pname}>]")
         elif param.default is inspect.Parameter.empty:
             parts.append(f"<{pname}>")
     return " ".join(parts)
@@ -57,6 +61,7 @@ class CommandItem(ListItem):
 
 
 class K8sToolApp(App):
+    TITLE = "kubebox"
     BINDINGS = [
         ("q", "quit", "Quit"),
         ("s", "focus_output", "Focus Output"),
@@ -125,11 +130,16 @@ class K8sToolApp(App):
         super().__init__()
         self.typer_app = typer_app
         skip = {"dashboard", "interactive"}
-        self._commands = {
-            _cmd_name(cmd): cmd
-            for cmd in typer_app.registered_commands
-            if cmd.callback and _cmd_name(cmd) not in skip
-        }
+        self._commands = dict(
+            sorted(
+                (
+                    (_cmd_name(cmd), cmd)
+                    for cmd in typer_app.registered_commands
+                    if cmd.callback and _cmd_name(cmd) not in skip
+                ),
+                key=lambda x: x[0],
+            )
+        )
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -201,12 +211,22 @@ class K8sToolApp(App):
         out = self.query_one("#output-area", RichLog)
         out.clear()
         out.write(f"[bold yellow]Running [cyan]{raw}[/cyan]...[/bold yellow]")
-        f = io.StringIO()
+        self._execute(raw)
+
+    @work(thread=True)
+    def _execute(self, raw: str) -> None:
+        class _FakeTTY(io.StringIO):
+            def isatty(self):
+                return True
+
+        f = _FakeTTY()
         with redirect_stdout(f):
             try:
                 self.typer_app(shlex.split(raw), standalone_mode=False)
             except Exception as e:
-                print(f"Error: {e}")
-        out.clear()
-        out.write(Text.from_ansi(f.getvalue()))
-        out.focus()
+                print(f"[bold red]Error:[/bold red] {e}")
+        result = Text.from_ansi(f.getvalue())
+        out = self.query_one("#output-area", RichLog)
+        self.call_from_thread(out.clear)
+        self.call_from_thread(out.write, result)
+        self.call_from_thread(out.focus)
