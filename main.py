@@ -1,6 +1,10 @@
 import typer
 from rich.console import Console
 from rich.panel import Panel
+from prompt_toolkit import PromptSession, HTML
+from prompt_toolkit.completion import WordCompleter
+from prompt_toolkit.history import FileHistory
+import os
 
 from core.kubernetes import (
     check_crashloop_pods,
@@ -15,6 +19,9 @@ from core.kustomize import check_kustomize_errors
 from core.vault import check_vault_status
 from core.trace import trace_object
 from core.crd import check_crd_status
+from core.events import check_events
+from core.network import check_network_status
+from core.rbac import check_rbac_status
 
 app = typer.Typer(
     help="🤖 Read-Only Kubernetes DevOps/SRE Assistant Toolbox", no_args_is_help=True
@@ -142,6 +149,56 @@ def crd(
 
 
 @app.command()
+def events(
+    namespace: str = typer.Option(
+        None, "--namespace", "-n", help="Filter by a specific namespace."
+    ),
+    event_type: str = typer.Option(
+        None, "--type", "-t", help="Filter by event type: Warning or Normal."
+    ),
+    reason: str = typer.Option(
+        None, "--reason", "-r", help="Filter by reason (partial, case-insensitive)."
+    ),
+    since: str = typer.Option(
+        None,
+        "--since",
+        "-s",
+        help="Show events newer than a duration (e.g. 30m, 2h, 1d).",
+    ),
+):
+    """Browse and filter Kubernetes events by type, reason, or age."""
+    msg = f" in namespace '{namespace}'" if namespace else " (all namespaces)"
+    console.print(Panel.fit(f"[bold cyan]Fetching Events{msg}...[/bold cyan]"))
+    check_events(namespace, event_type, reason, since)
+
+
+@app.command()
+def network(
+    namespace: str = typer.Option(
+        None,
+        "--namespace",
+        "-n",
+        help="Filter endpoint and NetworkPolicy checks by namespace.",
+    ),
+):
+    """Check CoreDNS health, services with no endpoints, and NetworkPolicy coverage."""
+    console.print(Panel.fit("[bold cyan]Running Network Diagnostic...[/bold cyan]"))
+    check_network_status(namespace)
+
+
+@app.command()
+def rbac(
+    namespace: str = typer.Option(
+        None, "--namespace", "-n", help="Filter by a specific namespace."
+    ),
+):
+    """Scan RBAC for Forbidden events, unbound ServiceAccounts, and role binding summary."""
+    msg = f" in namespace '{namespace}'" if namespace else ""
+    console.print(Panel.fit(f"[bold cyan]Running RBAC Diagnostic{msg}...[/bold cyan]"))
+    check_rbac_status(namespace)
+
+
+@app.command()
 def verify_readonly():
     """Run a check to confirm no mutative actions are allowed."""
     from core.utils import run_cmd
@@ -180,6 +237,60 @@ def describe(
 ):
     """Fetch and gracefully format the describe output of any K8s object (safe wrapper)."""
     describe_object(kind, name, namespace)
+
+
+@app.command()
+def interactive():
+    """Interactive mode with autocomplete and history."""
+    import shlex
+
+    history_file = os.path.expanduser("~/.k8s_tool_history")
+
+    # 1. Extract names, ensuring we skip None and convert everything to string
+    command_names = [
+        str(cmd.name) for cmd in app.registered_commands if cmd.name is not None
+    ]
+
+    # 2. Build the final list for completion
+    all_completions = command_names + ["exit", "quit", "help"]
+
+    completer = WordCompleter(all_completions, ignore_case=True)
+    session = PromptSession(completer=completer, history=FileHistory(history_file))
+
+    console.print("[bold magenta]Interactive Shell Started.[/bold magenta]")
+
+    while True:
+        try:
+            # session.prompt returns the string entered by the user
+            text = session.prompt(HTML("<cyan><b>k8s-assist> </b></cyan>"))
+
+            if not text:
+                continue
+
+            cleaned_text = text.strip()
+            if cleaned_text.lower() in ("exit", "quit"):
+                break
+
+            # Execute the command
+            app(shlex.split(cleaned_text))
+
+        except SystemExit:
+            # Prevent the tool from closing after a subcommand finishes
+            continue
+        except EOFError:
+            break
+        except Exception as e:
+            console.print(f"[bold red]Error:[/bold red] {e}")
+
+
+@app.command()
+def dashboard():
+    """Launch the TUI Dashboard (Table-style navigation)."""
+    # Import locally to keep the CLI fast for standard commands
+    from core.tui import K8sToolApp
+
+    ui = K8sToolApp(app)
+    ui.run()
 
 
 if __name__ == "__main__":

@@ -216,6 +216,11 @@ def check_all_objects(namespace: str = None):
         if namespace
         else apps_v1.list_stateful_set_for_all_namespaces().items
     )
+    dss = (
+        apps_v1.list_namespaced_daemon_set(namespace).items
+        if namespace
+        else apps_v1.list_daemon_set_for_all_namespaces().items
+    )
 
     fail_table = Table(
         title="Degraded Workloads", show_header=True, header_style="bold magenta"
@@ -247,18 +252,31 @@ def check_all_objects(namespace: str = None):
             if not first_degraded:
                 first_degraded = ("statefulset", s.metadata.name, s.metadata.namespace)
             degraded = True
+    for ds in dss:
+        desired = ds.status.desired_number_scheduled or 0
+        ready = ds.status.number_ready or 0
+        if desired and ready != desired:
+            fail_table.add_row(
+                "DaemonSet",
+                ds.metadata.namespace,
+                ds.metadata.name,
+                f"{ready}/{desired}",
+            )
+            if not first_degraded:
+                first_degraded = ("daemonset", ds.metadata.name, ds.metadata.namespace)
+            degraded = True
 
     if degraded:
         console.print(fail_table)
-    if degraded and first_degraded:
-        kind, name, ns = first_degraded
-        print_tip(
-            "Workloads missing replicas usually suffer from inadequate node capacity, persistent volume locks, or image pull errors.",
-            f"kubectl describe {kind} {name} -n {ns}",
-        )
+        if first_degraded:
+            kind, name, ns = first_degraded
+            print_tip(
+                "Workloads missing replicas usually suffer from inadequate node capacity, persistent volume locks, or image pull errors.",
+                f"kubectl describe {kind} {name} -n {ns}",
+            )
     else:
         console.print(
-            "[green]✓ All Workloads (Deployments/StatefulSets) have desired replicas ready[/green]"
+            "[green]✓ All Workloads (Deployments/StatefulSets/DaemonSets) have desired replicas ready[/green]"
         )
 
     all_workloads = Table(
@@ -288,16 +306,43 @@ def check_all_objects(namespace: str = None):
             s.metadata.name,
             f"[{color}]{ready}/{desired}[/{color}]",
         )
-    if deps or sts:
+    for ds in dss:
+        desired = ds.status.desired_number_scheduled or 0
+        ready = ds.status.number_ready or 0
+        color = "green" if ready == desired else "red"
+        all_workloads.add_row(
+            "DaemonSet",
+            ds.metadata.namespace,
+            ds.metadata.name,
+            f"[{color}]{ready}/{desired}[/{color}]",
+        )
+    if deps or sts or dss:
         console.print(all_workloads)
 
     # Check 4: Services
     _check_services(v1, namespace)
 
-    # Check 5: ConfigMaps
+    # Check 5: Ingresses
+    _check_ingresses(namespace)
+
+    # Check 6: Jobs & CronJobs
+    _check_jobs(namespace)
+
+    # Check 7: HPAs
+    _check_hpas(namespace)
+
+    # Check 8: PersistentVolumes (global only)
+    if not namespace:
+        _check_persistent_volumes(v1)
+
+    # Check 9: Namespaces (global only)
+    if not namespace:
+        _check_namespaces(v1)
+
+    # Check 10: ConfigMaps
     _check_configmaps(v1, namespace)
 
-    # Check 6: Secrets (names and types only — values never shown)
+    # Check 11: Secrets (names and types only — values never shown)
     _check_secrets(v1, namespace)
 
     # Check 7: The Ultimate Catch-All -> K8s Warning Events in the last 15m
@@ -585,6 +630,294 @@ def _check_secrets(v1, namespace: str = None):
         console.print(table)
     except Exception as e:
         console.print(f"[bold red]Error checking Secrets:[/bold red] {e}")
+
+
+def _check_ingresses(namespace: str = None):
+    console.print("\n[bold blue]Checking Ingresses...[/bold blue]")
+    try:
+        networking_v1 = client.NetworkingV1Api()
+        ingresses = (
+            networking_v1.list_namespaced_ingress(namespace).items
+            if namespace
+            else networking_v1.list_ingress_for_all_namespaces().items
+        )
+        if not ingresses:
+            console.print("[dim]No Ingresses found.[/dim]")
+            return
+        table = Table(title="Ingresses", show_header=True, header_style="bold magenta")
+        table.add_column("Namespace", style="cyan")
+        table.add_column("Name", style="blue")
+        table.add_column("Class", style="yellow")
+        table.add_column("Hosts", style="dim")
+        table.add_column("Address", style="green")
+        for ing in ingresses:
+            hosts = (
+                ", ".join(r.host or "*" for r in (ing.spec.rules or []) if r.host)
+                or "*"
+            )
+            lb = ing.status.load_balancer
+            address = ""
+            if lb and lb.ingress:
+                address = lb.ingress[0].ip or lb.ingress[0].hostname or ""
+            ing_class = ing.spec.ingress_class_name or (
+                (ing.metadata.annotations or {}).get("kubernetes.io/ingress.class", "—")
+            )
+            table.add_row(
+                ing.metadata.namespace,
+                ing.metadata.name,
+                ing_class,
+                hosts,
+                address or "[yellow]pending[/yellow]",
+            )
+        console.print(table)
+    except Exception as e:
+        console.print(f"[bold red]Error checking Ingresses:[/bold red] {e}")
+
+
+def _check_jobs(namespace: str = None):
+    console.print("\n[bold blue]Checking Jobs & CronJobs...[/bold blue]")
+    try:
+        batch_v1 = client.BatchV1Api()
+        jobs = (
+            batch_v1.list_namespaced_job(namespace).items
+            if namespace
+            else batch_v1.list_job_for_all_namespaces().items
+        )
+        cronjobs = (
+            batch_v1.list_namespaced_cron_job(namespace).items
+            if namespace
+            else batch_v1.list_cron_job_for_all_namespaces().items
+        )
+
+        if jobs:
+            failed_jobs = [
+                j
+                for j in jobs
+                if (j.status.failed or 0) > 0 and not j.status.completion_time
+            ]
+            if failed_jobs:
+                fail_table = Table(
+                    title="Failed Jobs", show_header=True, header_style="bold magenta"
+                )
+                fail_table.add_column("Namespace", style="cyan")
+                fail_table.add_column("Name", style="blue")
+                fail_table.add_column("Failed", style="red", justify="right")
+                for j in failed_jobs:
+                    fail_table.add_row(
+                        j.metadata.namespace, j.metadata.name, str(j.status.failed or 0)
+                    )
+                console.print(fail_table)
+                print_tip(
+                    "Jobs with failures may be due to application errors, missing config, or resource limits.",
+                    f"kubectl describe job {failed_jobs[0].metadata.name} -n {failed_jobs[0].metadata.namespace}",
+                )
+            else:
+                console.print("[green]✓ No actively failing Jobs[/green]")
+
+            job_table = Table(
+                title="Jobs", show_header=True, header_style="bold magenta"
+            )
+            job_table.add_column("Namespace", style="cyan")
+            job_table.add_column("Name", style="blue")
+            job_table.add_column("Status")
+            job_table.add_column("Succeeded", justify="right", style="green")
+            job_table.add_column("Failed", justify="right", style="red")
+            for j in jobs:
+                if j.status.completion_time:
+                    status = "[green]Complete[/green]"
+                elif (j.status.failed or 0) > 0:
+                    status = "[red]Failed[/red]"
+                else:
+                    status = "[yellow]Running[/yellow]"
+                job_table.add_row(
+                    j.metadata.namespace,
+                    j.metadata.name,
+                    status,
+                    str(j.status.succeeded or 0),
+                    str(j.status.failed or 0),
+                )
+            console.print(job_table)
+
+        if cronjobs:
+            cj_table = Table(
+                title="CronJobs", show_header=True, header_style="bold magenta"
+            )
+            cj_table.add_column("Namespace", style="cyan")
+            cj_table.add_column("Name", style="blue")
+            cj_table.add_column("Schedule", style="yellow")
+            cj_table.add_column("Suspended", justify="center")
+            cj_table.add_column("Active", justify="right")
+            cj_table.add_column("Last Schedule", style="dim")
+            for cj in cronjobs:
+                suspended = "[red]Yes[/red]" if cj.spec.suspend else "[green]No[/green]"
+                active = str(len(cj.status.active or []))
+                last = (
+                    fmt_age(
+                        cj.status.last_schedule_time.isoformat()
+                        if cj.status.last_schedule_time
+                        else None
+                    )
+                    if cj.status.last_schedule_time
+                    else "Never"
+                )
+                cj_table.add_row(
+                    cj.metadata.namespace,
+                    cj.metadata.name,
+                    cj.spec.schedule,
+                    suspended,
+                    active,
+                    last,
+                )
+            console.print(cj_table)
+
+        if not jobs and not cronjobs:
+            console.print("[dim]No Jobs or CronJobs found.[/dim]")
+    except Exception as e:
+        console.print(f"[bold red]Error checking Jobs/CronJobs:[/bold red] {e}")
+
+
+def _check_hpas(namespace: str = None):
+    console.print("\n[bold blue]Checking HorizontalPodAutoscalers...[/bold blue]")
+    try:
+        autoscaling_v2 = client.AutoscalingV2Api()
+        hpas = (
+            autoscaling_v2.list_namespaced_horizontal_pod_autoscaler(namespace).items
+            if namespace
+            else autoscaling_v2.list_horizontal_pod_autoscaler_for_all_namespaces().items
+        )
+        if not hpas:
+            console.print("[dim]No HPAs found.[/dim]")
+            return
+        table = Table(title="HPAs", show_header=True, header_style="bold magenta")
+        table.add_column("Namespace", style="cyan")
+        table.add_column("Name", style="blue")
+        table.add_column("Target", style="yellow")
+        table.add_column("Min", justify="right", style="dim")
+        table.add_column("Max", justify="right", style="dim")
+        table.add_column("Current/Desired", justify="right")
+        for hpa in hpas:
+            current = hpa.status.current_replicas or 0
+            desired = hpa.status.desired_replicas or 0
+            color = "green" if current == desired else "yellow"
+            ref = hpa.spec.scale_target_ref
+            target = f"{ref.kind}/{ref.name}"
+            table.add_row(
+                hpa.metadata.namespace,
+                hpa.metadata.name,
+                target,
+                str(hpa.spec.min_replicas or 1),
+                str(hpa.spec.max_replicas),
+                f"[{color}]{current}/{desired}[/{color}]",
+            )
+        console.print(table)
+    except Exception as e:
+        console.print(f"[bold red]Error checking HPAs:[/bold red] {e}")
+
+
+def _check_persistent_volumes(v1):
+    console.print("\n[bold blue]Checking PersistentVolumes...[/bold blue]")
+    try:
+        pvs = v1.list_persistent_volume().items
+        if not pvs:
+            console.print("[dim]No PersistentVolumes found.[/dim]")
+            return
+        failed_pvs = [p for p in pvs if p.status.phase not in ("Bound", "Available")]
+        if failed_pvs:
+            fail_table = Table(
+                title="Problem PersistentVolumes",
+                show_header=True,
+                header_style="bold magenta",
+            )
+            fail_table.add_column("Name", style="blue")
+            fail_table.add_column("Status", style="red")
+            fail_table.add_column("Reclaim Policy", style="dim")
+            for p in failed_pvs:
+                fail_table.add_row(
+                    p.metadata.name,
+                    p.status.phase or "Unknown",
+                    p.spec.persistent_volume_reclaim_policy or "—",
+                )
+            console.print(fail_table)
+            print_tip(
+                "Released or Failed PVs may indicate orphaned storage or provisioner errors.",
+                f"kubectl describe pv {failed_pvs[0].metadata.name}",
+            )
+        else:
+            console.print(
+                "[green]✓ All PersistentVolumes are Bound or Available[/green]"
+            )
+
+        table = Table(
+            title="All PersistentVolumes", show_header=True, header_style="bold magenta"
+        )
+        table.add_column("Name", style="blue")
+        table.add_column("Capacity", style="yellow")
+        table.add_column("Access Modes", style="dim")
+        table.add_column("Reclaim Policy", style="dim")
+        table.add_column("Status")
+        table.add_column("Claim", style="cyan")
+        for p in pvs:
+            color = "green" if p.status.phase in ("Bound", "Available") else "red"
+            capacity = (p.spec.capacity or {}).get("storage", "—")
+            modes = ", ".join(p.spec.access_modes or [])
+            claim = ""
+            if p.spec.claim_ref:
+                claim = f"{p.spec.claim_ref.namespace}/{p.spec.claim_ref.name}"
+            table.add_row(
+                p.metadata.name,
+                capacity,
+                modes,
+                p.spec.persistent_volume_reclaim_policy or "—",
+                f"[{color}]{p.status.phase}[/{color}]",
+                claim,
+            )
+        console.print(table)
+    except Exception as e:
+        console.print(f"[bold red]Error checking PersistentVolumes:[/bold red] {e}")
+
+
+def _check_namespaces(v1):
+    console.print("\n[bold blue]Checking Namespaces...[/bold blue]")
+    try:
+        namespaces = v1.list_namespace().items
+        if not namespaces:
+            console.print("[dim]No Namespaces found.[/dim]")
+            return
+        terminating = [n for n in namespaces if n.status.phase == "Terminating"]
+        if terminating:
+            fail_table = Table(
+                title="Stuck Terminating Namespaces",
+                show_header=True,
+                header_style="bold magenta",
+            )
+            fail_table.add_column("Name", style="blue")
+            for n in terminating:
+                fail_table.add_row(n.metadata.name)
+            console.print(fail_table)
+            print_tip(
+                "A namespace stuck in Terminating usually has finalizers blocking deletion.",
+                f"kubectl get namespace {terminating[0].metadata.name} -o json | jq '.spec.finalizers'",
+            )
+        else:
+            console.print("[green]✓ All Namespaces are Active[/green]")
+
+        table = Table(
+            title="All Namespaces", show_header=True, header_style="bold magenta"
+        )
+        table.add_column("Name", style="blue")
+        table.add_column("Status")
+        table.add_column("Age", style="dim")
+        for n in namespaces:
+            color = "green" if n.status.phase == "Active" else "red"
+            age = fmt_age(
+                n.metadata.creation_timestamp.isoformat()
+                if n.metadata.creation_timestamp
+                else None
+            )
+            table.add_row(n.metadata.name, f"[{color}]{n.status.phase}[/{color}]", age)
+        console.print(table)
+    except Exception as e:
+        console.print(f"[bold red]Error checking Namespaces:[/bold red] {e}")
 
 
 def describe_object(kind: str, name: str, namespace: str = None):
