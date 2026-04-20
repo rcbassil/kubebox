@@ -1,14 +1,8 @@
 import json
-import subprocess
+import re
 from rich.table import Table
 from rich.panel import Panel
-from core.utils import run_cmd, console, print_tip
-
-
-def _run_allow_fail(cmd: list[str]) -> str:
-    """Run a command and return stdout even when exit code is non-zero."""
-    result = subprocess.run(cmd, text=True, capture_output=True)
-    return result.stdout
+from core.utils import run_cmd, run_cmd_allow_fail, console, print_tip
 
 
 _VAULT_LABEL_SELECTORS = [
@@ -100,8 +94,9 @@ def _check_vault_pods(ns: str):
 
     if issues:
         pod_name, pod_ns = issues[0]
+        all_pod_names = [pod["metadata"]["name"] for pod in vault_pods]
         if _is_pod_sealed(pod_name, pod_ns):
-            _print_unseal_tips(pod_name, pod_ns)
+            _print_unseal_tips(pod_name, pod_ns, all_pod_names)
         else:
             print_tip(
                 "A Vault pod that is not Ready is typically sealed, initializing, or has lost quorum with other cluster members.",
@@ -113,14 +108,14 @@ def _check_vault_pods(ns: str):
 
 def _is_pod_sealed(pod_name: str, ns: str) -> bool:
     """Return True if vault status reports Sealed: true (exits 2 when sealed, hence allow_fail)."""
-    out = _run_allow_fail(
+    out, _, _ = run_cmd_allow_fail(
         ["kubectl", "exec", "-n", ns, pod_name, "--", "vault", "status"]
     )
-    return "Sealed             true" in out
+    return bool(re.search(r"Sealed\s+true", out))
 
 
-def _print_unseal_tips(pod_name: str, ns: str):
-    status_out = _run_allow_fail(
+def _print_unseal_tips(pod_name: str, ns: str, all_pod_names: list[str]):
+    status_out, _, _ = run_cmd_allow_fail(
         ["kubectl", "exec", "-n", ns, pod_name, "--", "vault", "status"]
     )
     progress_line = next(
@@ -134,16 +129,27 @@ def _print_unseal_tips(pod_name: str, ns: str):
     if progress_line and threshold_line:
         progress_info = f"\n[cyan]Current status → {progress_line.strip()}  |  {threshold_line.strip()}[/cyan]\n"
 
+    ha_pods = [p for p in all_pod_names if p != pod_name]
+    ha_step = ""
+    if ha_pods:
+        ha_cmds = "\n".join(
+            f"[bold green]> kubectl exec -n '{ns}' '{p}' -- vault operator unseal <unseal-key>[/bold green]"
+            for p in ha_pods
+        )
+        ha_step = (
+            "[bold yellow]Step 2:[/bold yellow] For HA clusters, unseal each replica individually:\n"
+            + ha_cmds
+            + "\n\n"
+        )
+
     content = (
         "[bold red]Vault is Sealed[/bold red]\n"
         + progress_info
         + "\nData is inaccessible until enough unseal keys (or a cloud auto-unseal) are applied.\n\n"
         "[bold yellow]Step 1:[/bold yellow] Apply an unseal key (repeat until the threshold is met):\n"
-        f"[bold green]> kubectl exec -n {ns} {pod_name} -- vault operator unseal <unseal-key>[/bold green]\n\n"
-        "[bold yellow]Step 2:[/bold yellow] For HA clusters, unseal each replica individually:\n"
-        f"[bold green]> kubectl exec -n {ns} vault-1 -- vault operator unseal <unseal-key>[/bold green]\n"
-        f"[bold green]> kubectl exec -n {ns} vault-2 -- vault operator unseal <unseal-key>[/bold green]\n\n"
-        "[dim]If you use auto-unseal (AWS KMS, GCP CKMS, Azure Key Vault), check that the IAM/service account permissions are intact.[/dim]"
+        f"[bold green]> kubectl exec -n '{ns}' '{pod_name}' -- vault operator unseal <unseal-key>[/bold green]\n\n"
+        + ha_step
+        + "[dim]If you use auto-unseal (AWS KMS, GCP CKMS, Azure Key Vault), check that the IAM/service account permissions are intact.[/dim]"
     )
     console.print(Panel(content, border_style="red", title="Unseal Instructions"))
 

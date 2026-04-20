@@ -1,31 +1,30 @@
-import subprocess
+import os
 from kubernetes import client, config
 from rich.table import Table
-from core.utils import console, print_tip
+from core.utils import console, print_tip, run_cmd_allow_fail
 
 
 def check_kustomize_errors(namespace: str = None, local_path: str = None):
     """Troubleshoot Kustomize by either checking the flux controller logs or running a local build."""
 
     if local_path:
+        if not os.path.isdir(local_path):
+            console.print(
+                f"[bold red]Path not found or not a directory:[/bold red] {local_path}"
+            )
+            return
         console.print(
             f"[bold blue]Running local dry-run for Kustomize path:[/bold blue] {local_path}"
         )
-        try:
-            # Run kustomize build to see if there are YAML formatting or ref errors
-            result = subprocess.run(
-                ["kubectl", "kustomize", local_path], capture_output=True, text=True
-            )
-            if result.returncode != 0:
-                console.print("[bold red]Kustomize Build Failed![/bold red]")
-                console.print(f"[dim]{result.stderr}[/dim]")
-            else:
-                console.print(
-                    "[green]✓ Local Kustomize build succeeded (YAML is valid).[/green]"
-                )
-        except FileNotFoundError:
+        stdout, stderr, returncode = run_cmd_allow_fail(
+            ["kubectl", "kustomize", local_path]
+        )
+        if returncode != 0:
+            console.print("[bold red]Kustomize Build Failed![/bold red]")
+            console.print(f"[dim]{stderr}[/dim]")
+        else:
             console.print(
-                "[bold red]kubectl command not found on the system.[/bold red]"
+                "[green]✓ Local Kustomize build succeeded (YAML is valid).[/green]"
             )
         return
 
@@ -62,12 +61,13 @@ def check_kustomize_errors(namespace: str = None, local_path: str = None):
                     namespace=pod.metadata.namespace,
                     tail_lines=200,
                 )
-                # Parse logs for level=error
+                if not logs:
+                    continue
+                # Parse logs for level=error (JSON structured logs or plain text)
                 errors = [
                     line
                     for line in logs.split("\n")
-                    if '"level":"error"' in line.lower()
-                    or "error" in line.lower().split(" ", 1)[0]
+                    if '"level":"error"' in line or "level=error" in line.lower()
                 ]
 
                 # Deduplicate similar sequential errors
@@ -86,7 +86,7 @@ def check_kustomize_errors(namespace: str = None, local_path: str = None):
                     )
             except Exception as e:
                 console.print(
-                    f"[dim]Could not read logs for {pod.metadata.name}: {e}[/dim]"
+                    f"[yellow]Could not read logs for {pod.metadata.name}: {e}[/yellow]"
                 )
 
         if not failing:

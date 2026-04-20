@@ -31,6 +31,8 @@ def check_kong_errors():
                     namespace=pod.metadata.namespace,
                     tail_lines=100,
                 )
+                if not logs:
+                    continue
                 errors = [
                     line
                     for line in logs.split("\n")
@@ -46,11 +48,11 @@ def check_kong_errors():
                     failing = True
                     print_tip(
                         "Kong proxy errors usually trigger from unresolvable upstream Services or invalid KongPlugin objects blocking the config sync.",
-                        f"kubectl get kongplugins -n {pod.metadata.namespace} && kubectl get ingress -n {pod.metadata.namespace}",
+                        f"kubectl get kongplugins -n '{pod.metadata.namespace}' && kubectl get ingress -n '{pod.metadata.namespace}'",
                     )
             except Exception as e:
                 console.print(
-                    f"[dim]Could not read logs for {pod.metadata.name}: {e}[/dim]"
+                    f"[yellow]Could not read logs for {pod.metadata.name}: {e}[/yellow]"
                 )
 
         if not failing:

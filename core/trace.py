@@ -98,8 +98,8 @@ def _attach_events(branch: Tree, name: str, kind: str, ns: str, v1, limit: int =
             evts_branch = branch.add("[yellow]Warning Events[/yellow]")
             for e in warnings:
                 evts_branch.add(f"[yellow]{e.reason}[/yellow]: [dim]{e.message}[/dim]")
-    except Exception:
-        pass
+    except Exception as e:
+        branch.add(f"[dim]Could not fetch events: {e}[/dim]")
 
 
 # ---------------------------------------------------------------------------
@@ -154,8 +154,8 @@ def _rs_subtree(rs, ns: str, v1, apps) -> Tree:
         pods = v1.list_namespaced_pod(ns, label_selector=selector).items
         for pod in pods:
             node.add_renderable(_pod_subtree(pod, ns, v1))
-    except Exception:
-        node.add("[dim]could not list pods[/dim]")
+    except Exception as e:
+        node.add(f"[dim]could not list pods: {e}[/dim]")
 
     _attach_events(node, name, "ReplicaSet", ns, v1)
     return node
@@ -173,8 +173,9 @@ def _svc_subtree(svc, ns: str, v1) -> Tree:
         ep = v1.read_namespaced_endpoints(name, ns)
         ready_count = sum(len(s.addresses or []) for s in ep.subsets or [])
         not_ready = sum(len(s.not_ready_addresses or []) for s in ep.subsets or [])
-    except Exception:
+    except Exception as e:
         ready_count, not_ready = 0, 0
+        console.print(f"[dim]Could not fetch endpoints for {name}: {e}[/dim]")
 
     icon = _OK if ready_count > 0 else _WARN
     node = Tree(
@@ -189,8 +190,8 @@ def _svc_subtree(svc, ns: str, v1) -> Tree:
             pods = v1.list_namespaced_pod(ns, label_selector=selector).items
             for pod in pods:
                 node.add_renderable(_pod_subtree(pod, ns, v1))
-        except Exception:
-            pass
+        except Exception as e:
+            node.add(f"[dim]could not list pods for service: {e}[/dim]")
 
     return node
 
@@ -226,8 +227,8 @@ def trace_pod(name: str, ns: str):
                     owner_node.add(
                         f"[dim]↑ owned by[/dim] [yellow]{dep_ref.kind}[/yellow]/[blue]{dep_ref.name}[/blue]"
                     )
-            except Exception:
-                pass
+            except Exception as e:
+                owner_node.add(f"[dim]could not fetch ReplicaSet: {e}[/dim]")
 
     # Containers
     containers = root.add("[bold]Containers[/bold]")
@@ -291,8 +292,8 @@ def trace_deployment(name: str, ns: str):
             sel = svc.spec.selector or {}
             if sel and all(dep_labels.get(k) == v for k, v in sel.items()):
                 root.add_renderable(_svc_subtree(svc, ns, v1))
-    except Exception:
-        pass
+    except Exception as e:
+        root.add(f"[dim]could not fetch Services: {e}[/dim]")
 
     _attach_events(root, name, "Deployment", ns, v1)
     console.print(
@@ -390,12 +391,9 @@ def trace_ingress(name: str, ns: str):
 
     for rule in ing.spec.rules or []:
         host_node = root.add(f"[cyan]host:[/cyan] {rule.host or '*'}")
-        for path in rule.http.paths if rule.http else []:
-            svc_name = (
-                path.backend.service.name
-                if path.backend and path.backend.service
-                else None
-            )
+        for path in (rule.http.paths or []) if rule.http else []:
+            backend = path.backend
+            svc_name = backend.service.name if backend and backend.service else None
             path_str = path.path or "/"
             if svc_name:
                 path_node = host_node.add(
@@ -404,8 +402,8 @@ def trace_ingress(name: str, ns: str):
                 try:
                     svc = v1.read_namespaced_service(svc_name, ns)
                     path_node.add_renderable(_svc_subtree(svc, ns, v1))
-                except Exception:
-                    path_node.add(f"[red]Service '{svc_name}' not found[/red]")
+                except Exception as e:
+                    path_node.add(f"[red]Service '{svc_name}' not found: {e}[/red]")
 
     console.print(
         Panel(root, border_style="blue", title=f"Object Trace — Ingress/{name}")
@@ -441,9 +439,9 @@ def trace_pvc(name: str, ns: str):
             )
             reclaim = pv.spec.persistent_volume_reclaim_policy or "—"
             pv_node.add(f"[dim]Reclaim Policy:[/dim] {reclaim}")
-        except Exception:
+        except Exception as e:
             root.add(
-                f"[yellow]PersistentVolume[/yellow]/[blue]{pv_name}[/blue] [dim](could not fetch)[/dim]"
+                f"[yellow]PersistentVolume[/yellow]/[blue]{pv_name}[/blue] [dim](could not fetch: {e})[/dim]"
             )
     else:
         root.add("[red]No PersistentVolume bound yet[/red]")

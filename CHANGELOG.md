@@ -2,6 +2,34 @@
 
 All notable changes to this project are documented here.
 
+## [0.3.0] — 2026-04-19
+
+### Security
+- Replaced direct `subprocess.run()` calls in `vault.py` and `kustomize.py` with a new `run_cmd_allow_fail()` utility that applies the same mutative-command safety check as `run_cmd()` before executing. Previously those code paths bypassed the read-only safeguard entirely.
+- Replaced `command.split()` with `shlex.split()` in `print_tip()` so commands containing quoted arguments or spaces in resource names are parsed correctly and cannot be misinterpreted.
+
+### Fixed
+- **kubernetes.py** — Removed redundant `dict()` cast when reading a terminated container's exit reason; now uses `.reason or "Error"` directly.
+- **kubernetes.py** — Events tip command now uses `-A` (all namespaces) when no namespace is specified, instead of incorrectly defaulting to `-n default`.
+- **kubernetes.py** — Message truncation in the events table no longer appends `"..."` to messages that are already under 100 characters.
+- **kubernetes.py** — JSON decode failure on the events response now prints a yellow warning instead of silently doing nothing.
+- **kubernetes.py** — `first_degraded` unpacking is now guarded with a null check, preventing a `TypeError` crash on edge-case API responses.
+- **kubernetes.py** — Ready replica comparisons now use `(ready_replicas or 0)` to prevent false degraded alerts when the field is `None`.
+- **vault.py** — Sealed detection replaced fragile exact-whitespace string match with `re.search(r"Sealed\s+true", out)`.
+- **vault.py** — Unseal instructions no longer hardcode `vault-1` / `vault-2`; replica pod names are now derived dynamically from the live StatefulSet pods.
+- **vault.py** — Pod names and namespace are single-quoted in the displayed `kubectl exec` commands so they remain valid with unusual names.
+- **kustomize.py** — Local path is validated with `os.path.isdir()` before running `kubectl kustomize`, providing a clear error instead of a confusing subprocess failure.
+- **kustomize.py** — Error log parsing no longer applies `.lower()` to JSON-structured log lines, which was breaking the `"level":"error"` match.
+- **kustomize.py** — Added `if not logs: continue` guard before `.split("\n")` to prevent `AttributeError` when the pod log API returns `None`.
+- **flux.py** — `kubectl describe` tip now uses an explicit `_RESOURCE_KIND_MAP` instead of fragile string transformation.
+- **flux.py** — JSON decode failure now prints a yellow warning instead of silently returning.
+- **helm.py** — `print_tip()` is now guarded with `if first_bad:` to prevent `AttributeError` on the edge case where the failing loop never sets it.
+- **trace.py** — `rule.http.paths` is now accessed as `rule.http.paths or []` to prevent `TypeError` when the field is `None` on an Ingress rule.
+- **trace.py** — All bare `except Exception: pass` blocks now surface the error message into the tree node so failures are visible instead of silently swallowed.
+- **kong.py** — Added `if not logs: continue` guard before `.split("\n")`.
+- **kong.py** — Log-read failure message elevated from `[dim]` (nearly invisible) to `[yellow]`.
+- **kong.py** — Namespace is single-quoted in the displayed `kubectl get` tip command.
+
 ## [0.2.0] — 2026-04-19
 
 ### Added

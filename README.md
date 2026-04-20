@@ -49,6 +49,7 @@ sudo mv ./dist/k8s-assist /usr/local/bin/k8s-assist
 ## Commands
 
 ### 1. `pods` — Scan for Pod Failures
+
 Scans all namespaces for pods in `CrashLoopBackOff`, `ImagePullBackOff`, `Pending`, or `Error` states, then prints a full listing of every pod with its status.
 
 ```bash
@@ -57,6 +58,7 @@ uv run main.py pods -n my-app-namespace
 ```
 
 ### 2. `all` — Full Cluster Diagnostic
+
 Checks Nodes (NotReady), PVCs (Unbound), and Workloads (desired vs ready replicas), then scans cluster-wide Warning events. Prints a complete listing of all nodes, PVCs, and workloads after each section. After displaying warning events, emits up to 5 targeted command suggestions based on the event reasons (`BackOff`, `OOMKilling`, `FailedScheduling`, `FailedMount`, `Unhealthy`, `Evicted`, `NodeNotReady`, etc.).
 
 ```bash
@@ -65,6 +67,7 @@ uv run main.py all -n my-app-namespace
 ```
 
 ### 3. `trace` — Object Dependency Tree
+
 Walks the full Kubernetes dependency chain for any object and renders it as a color-coded tree. Navigates upward (owner references) and downward (ReplicaSets → Pods → containers → Services) and surfaces warning events at each level.
 
 Supported kinds: `pod`, `deployment`, `statefulset`, `daemonset`, `service` / `svc`, `ingress` / `ing`, `pvc` / `persistentvolumeclaim`.
@@ -89,6 +92,7 @@ uv run main.py trace pod my-crashing-pod-xyz -n prod
 ```
 
 ### 4. `flux` — FluxCD Synchronization
+
 Scans `GitRepository`, `Kustomization`, and `HelmRelease` objects for `Ready=False` status. Lists all Flux resources with their Ready state after each check.
 
 ```bash
@@ -96,6 +100,7 @@ uv run main.py flux
 ```
 
 ### 5. `helm` — Helm Releases
+
 Finds releases not in `deployed` state (e.g. `failed`, `pending-install`, `pending-upgrade`). Prints a full listing of all releases with status, chart, and app version.
 
 ```bash
@@ -104,6 +109,7 @@ uv run main.py helm -n ingress-nginx
 ```
 
 ### 6. `vault` — HashiCorp Vault
+
 Locates Vault pods automatically by label (`app.kubernetes.io/name=vault` or `app=vault`). Checks pod readiness, StatefulSet replica health, and warning events. If Vault is **sealed**, detects it via `vault status`, shows current unseal progress, and prints step-by-step unseal instructions for single-node and HA deployments.
 
 ```bash
@@ -112,6 +118,7 @@ uv run main.py vault -n vault-system
 ```
 
 ### 7. `kong` — Kong Ingress Controller
+
 Scans Kong proxy pod logs for `[error]` and `level=error` entries. Lists all Kong pods with their phase and readiness.
 
 ```bash
@@ -119,6 +126,7 @@ uv run main.py kong
 ```
 
 ### 8. `kustomize` — Kustomize Controller
+
 Parses `kustomize-controller` logs for `level=error` entries to surface GitOps sync failures. Optionally runs a local `kustomize build` dry-run. Lists all controller pods at the end.
 
 ```bash
@@ -128,6 +136,7 @@ uv run main.py kustomize -b ./clusters/my-local-cluster
 ```
 
 ### 9. `describe` — Safe Describe Wrapper
+
 Fetches and syntax-highlights the describe output of any Kubernetes object.
 
 ```bash
@@ -136,6 +145,7 @@ uv run main.py describe node my-node
 ```
 
 ### 10. `logs` — Safe Logs Wrapper
+
 Fetches and prints logs for any pod or deployment. Supports tail size and previous-container flags.
 
 ```bash
@@ -144,6 +154,7 @@ uv run main.py logs my-crashing-pod-123 -n prod -t 50 -p
 ```
 
 ### 11. `verify-readonly` — Read-Only Safeguard Check
+
 Confirms that the internal `run_cmd` utility blocks mutative commands (`apply`, `delete`, `patch`, etc.).
 
 ```bash

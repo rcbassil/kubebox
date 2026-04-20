@@ -65,10 +65,11 @@ def check_helm_status(namespace: str = None):
                 if not first_bad:
                     first_bad = r
         console.print(fail_table)
-        print_tip(
-            "A pending-install/failed release means the chart templates were invalid, hooks failed, or a timeout occurred and it rolled back.",
-            f"helm history -n {first_bad.get('namespace', 'default')} {first_bad.get('name', '<release>')}",
-        )
+        if first_bad:
+            print_tip(
+                "A pending-install/failed release means the chart templates were invalid, hooks failed, or a timeout occurred and it rolled back.",
+                f"helm history -n {first_bad.get('namespace', 'default')} {first_bad.get('name', '<release>')}",
+            )
     else:
         console.print("[green]✓ All Helm releases are stable[/green]")
 

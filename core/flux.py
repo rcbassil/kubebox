@@ -2,6 +2,12 @@ import json
 from rich.table import Table
 from core.utils import run_cmd, console, print_tip
 
+_RESOURCE_KIND_MAP = {
+    "Git Repositories": "gitrepositories",
+    "Kustomizations": "kustomizations",
+    "Helm Releases": "helmreleases",
+}
+
 
 def check_flux_status():
     """Check Flux components (Kustomizations, HelmReleases, GitRepositories) that are failing."""
@@ -23,6 +29,9 @@ def _check_generic_conditions(json_output: str, resource_type: str):
     try:
         data = json.loads(json_output)
     except json.JSONDecodeError:
+        console.print(
+            f"[yellow]Warning: could not parse {resource_type} response as JSON[/yellow]"
+        )
         return
 
     items = data.get("items", [])
@@ -70,9 +79,12 @@ def _check_generic_conditions(json_output: str, resource_type: str):
                 )
         console.print(f"\n[bold yellow]Failed {resource_type}:[/bold yellow]")
         console.print(fail_table)
+        kind_cmd = _RESOURCE_KIND_MAP.get(
+            resource_type, resource_type.lower().replace(" ", "")
+        )
         print_tip(
             f"If {resource_type} are failing to reconcile, check the exact status condition message or inspect the source-controller/kustomize-controller logs.",
-            f"kubectl describe {resource_type.lower().replace(' ', '')} -A",
+            f"kubectl describe {kind_cmd} -A",
         )
     else:
         console.print(f"[green]✓ All {resource_type} are Ready[/green]")

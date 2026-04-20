@@ -57,9 +57,7 @@ def check_crashloop_pods(namespace: str = None):
                     container_status.state.terminated
                     and container_status.state.terminated.exit_code != 0
                 ):
-                    status_string = container_status.state.terminated.reason or dict(
-                        container_status.state.terminated
-                    ).get("reason", "Error")
+                    status_string = container_status.state.terminated.reason or "Error"
 
         healthy = status_string in ("Running", "Succeeded") or pod.status.phase in (
             "Running",
@@ -91,7 +89,7 @@ def check_crashloop_pods(namespace: str = None):
         console.print(fail_table)
         print_tip(
             "CrashLoopBackOff or Error states generally mean the application crashed on startup or lost connection to a critical resource.",
-            f"kubectl get events -n {namespace or 'default'} --sort-by='.metadata.creationTimestamp' | tail -n 15",
+            f"kubectl get events {'-n ' + namespace if namespace else '-A'} --sort-by='.metadata.creationTimestamp' | tail -n 15",
         )
     else:
         console.print("[green]✓ All pods are healthy and running normally![/green]")
@@ -228,7 +226,7 @@ def check_all_objects(namespace: str = None):
     fail_table.add_column("Ready/Desired", style="red")
 
     for d in deps:
-        if d.spec.replicas and d.status.ready_replicas != d.spec.replicas:
+        if d.spec.replicas and (d.status.ready_replicas or 0) != d.spec.replicas:
             fail_table.add_row(
                 "Deployment",
                 d.metadata.namespace,
@@ -239,7 +237,7 @@ def check_all_objects(namespace: str = None):
                 first_degraded = ("deployment", d.metadata.name, d.metadata.namespace)
             degraded = True
     for s in sts:
-        if s.spec.replicas and s.status.ready_replicas != s.spec.replicas:
+        if s.spec.replicas and (s.status.ready_replicas or 0) != s.spec.replicas:
             fail_table.add_row(
                 "StatefulSet",
                 s.metadata.namespace,
@@ -252,6 +250,7 @@ def check_all_objects(namespace: str = None):
 
     if degraded:
         console.print(fail_table)
+    if degraded and first_degraded:
         kind, name, ns = first_degraded
         print_tip(
             "Workloads missing replicas usually suffer from inadequate node capacity, persistent volume locks, or image pull errors.",
@@ -334,7 +333,9 @@ def check_all_objects(namespace: str = None):
                         e.get("involvedObject", {}).get("namespace", "cluster"),
                         obj,
                         e.get("reason", ""),
-                        e.get("message", "...")[:100] + "...",
+                        (lambda m: m[:100] + "..." if len(m) > 100 else m)(
+                            e.get("message", "")
+                        ),
                     )
                 console.print(table)
                 _suggest_from_events(items)
@@ -343,7 +344,9 @@ def check_all_objects(namespace: str = None):
                     "[green]✓ No Warning events discovered in the cluster.[/green]"
                 )
         except json.JSONDecodeError:
-            pass
+            console.print(
+                "[yellow]Warning: could not parse events response as JSON[/yellow]"
+            )
 
 
 _EVENT_TIPS = {
