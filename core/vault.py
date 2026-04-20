@@ -2,7 +2,7 @@ import json
 import re
 from rich.table import Table
 from rich.panel import Panel
-from core.utils import run_cmd, run_cmd_allow_fail, console, print_tip
+from core.utils import run_cmd, run_cmd_allow_fail, console, print_tip, fmt_age
 
 
 _VAULT_LABEL_SELECTORS = [
@@ -52,7 +52,12 @@ def _check_vault_pods(ns: str):
     except json.JSONDecodeError:
         return
 
-    vault_pods = [p for p in pods if "vault" in p["metadata"]["name"]]
+    vault_pods = [
+        p
+        for p in pods
+        if "vault" in p["metadata"]["name"]
+        and "agent-injector" not in p["metadata"]["name"]
+    ]
     if not vault_pods:
         console.print(f"[yellow]No Vault pods found in namespace '{ns}'[/yellow]")
         return
@@ -94,9 +99,9 @@ def _check_vault_pods(ns: str):
 
     if issues:
         pod_name, pod_ns = issues[0]
-        all_pod_names = [pod["metadata"]["name"] for pod in vault_pods]
+        unhealthy_pod_names = [name for name, _ in issues]
         if _is_pod_sealed(pod_name, pod_ns):
-            _print_unseal_tips(pod_name, pod_ns, all_pod_names)
+            _print_unseal_tips(pod_name, pod_ns, unhealthy_pod_names)
         else:
             print_tip(
                 "A Vault pod that is not Ready is typically sealed, initializing, or has lost quorum with other cluster members.",
@@ -218,6 +223,7 @@ def _check_vault_events(ns: str):
         return
 
     table = Table(show_header=True, header_style="bold magenta")
+    table.add_column("Last Seen", style="dim", no_wrap=True)
     table.add_column("Object", style="blue")
     table.add_column("Reason", style="yellow")
     table.add_column("Message", style="white")
@@ -225,8 +231,11 @@ def _check_vault_events(ns: str):
     for e in items[-20:]:
         obj = f"{e.get('involvedObject', {}).get('kind', '?')}/{e.get('involvedObject', {}).get('name', '?')}"
         msg = e.get("message", "")
+        age = fmt_age(
+            e.get("lastTimestamp") or e.get("metadata", {}).get("creationTimestamp")
+        )
         table.add_row(
-            obj, e.get("reason", ""), msg[:120] + "..." if len(msg) > 120 else msg
+            age, obj, e.get("reason", ""), msg[:120] + "..." if len(msg) > 120 else msg
         )
 
     console.print(table)

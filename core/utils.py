@@ -1,5 +1,7 @@
+import json
 import shlex
 import subprocess
+from datetime import datetime, timezone
 from rich.console import Console
 import sys
 
@@ -17,6 +19,54 @@ def _check_mutative(cmd: list[str]):
         sys.exit(1)
 
 
+def fmt_age(timestamp: str) -> str:
+    """Convert a Kubernetes ISO timestamp to a human-readable age (e.g. '3m', '2h', '4d')."""
+    if not timestamp:
+        return "—"
+    try:
+        dt = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+        seconds = int((datetime.now(timezone.utc) - dt).total_seconds())
+        if seconds < 60:
+            return f"{seconds}s"
+        if seconds < 3600:
+            return f"{seconds // 60}m"
+        if seconds < 86400:
+            return f"{seconds // 3600}h"
+        return f"{seconds // 86400}d"
+    except Exception:
+        return "—"
+
+
+def _find_replacement_pod(old_pod_name: str, namespace: str) -> str | None:
+    """Find a running pod whose name shares the same deployment prefix as old_pod_name."""
+    # Deployment pods: <deploy>-<rs-hash>-<pod-hash> — strip last two segments
+    parts = old_pod_name.rsplit("-", 2)
+    if len(parts) < 3:
+        return None
+    base_name = parts[0]
+    result = subprocess.run(
+        ["kubectl", "get", "pods", "-n", namespace, "-o", "json"],
+        text=True,
+        capture_output=True,
+    )
+    if result.returncode != 0:
+        return None
+    try:
+        pods = json.loads(result.stdout).get("items", [])
+    except json.JSONDecodeError:
+        return None
+    for pod in pods:
+        name = pod["metadata"]["name"]
+        phase = pod.get("status", {}).get("phase", "")
+        if (
+            name.startswith(base_name + "-")
+            and name != old_pod_name
+            and phase == "Running"
+        ):
+            return name
+    return None
+
+
 def run_cmd(cmd: list[str]) -> str:
     """Run a shell command and return its stdout. Prints errors via Rich."""
     _check_mutative(cmd)
@@ -24,8 +74,29 @@ def run_cmd(cmd: list[str]) -> str:
         result = subprocess.run(cmd, check=True, text=True, capture_output=True)
         return result.stdout
     except subprocess.CalledProcessError as e:
-        console.print(f"[bold red]Command failed:[/bold red] {' '.join(cmd)}")
-        console.print(f"[dim]{e.stderr}[/dim]")
+        if "NotFound" in e.stderr and len(cmd) > 2 and cmd[1] == "logs":
+            pod_name = cmd[2]
+            namespace = cmd[cmd.index("-n") + 1] if "-n" in cmd else None
+            if namespace:
+                new_pod = _find_replacement_pod(pod_name, namespace)
+                if new_pod:
+                    console.print(
+                        f"[yellow]Pod restarted — retrying with new pod:[/yellow] {new_pod}"
+                    )
+                    new_cmd = [new_pod if c == pod_name else c for c in cmd]
+                    try:
+                        retry = subprocess.run(
+                            new_cmd, check=True, text=True, capture_output=True
+                        )
+                        return retry.stdout
+                    except subprocess.CalledProcessError:
+                        pass
+            console.print(
+                f"[yellow]Pod no longer exists and no replacement found: {pod_name}[/yellow]"
+            )
+        else:
+            console.print(f"[bold red]Command failed:[/bold red] {' '.join(cmd)}")
+            console.print(f"[dim]{e.stderr}[/dim]")
         return ""
 
 

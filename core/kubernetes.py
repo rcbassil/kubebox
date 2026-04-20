@@ -1,5 +1,5 @@
 from kubernetes import client, config
-from core.utils import console, run_cmd, print_tip
+from core.utils import console, run_cmd, print_tip, fmt_age
 from rich.table import Table
 import json
 
@@ -321,6 +321,7 @@ def check_all_objects(namespace: str = None):
                     show_header=True,
                     header_style="bold magenta",
                 )
+                table.add_column("Last Seen", style="dim", no_wrap=True)
                 table.add_column("Namespace", style="cyan")
                 table.add_column("Object", style="blue")
                 table.add_column("Reason", style="yellow")
@@ -329,7 +330,12 @@ def check_all_objects(namespace: str = None):
                 # Show last 50 only to prevent spam
                 for e in items[-50:]:
                     obj = f"{e.get('involvedObject', {}).get('kind', 'Unknown')}/{e.get('involvedObject', {}).get('name', 'Unknown')}"
+                    age = fmt_age(
+                        e.get("lastTimestamp")
+                        or e.get("metadata", {}).get("creationTimestamp")
+                    )
                     table.add_row(
+                        age,
                         e.get("involvedObject", {}).get("namespace", "cluster"),
                         obj,
                         e.get("reason", ""),

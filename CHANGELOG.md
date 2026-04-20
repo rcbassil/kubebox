@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented here.
 
+## [0.4.0] — 2026-04-19
+
+### Added
+- **Last Seen column on warning event tables** — both the cluster-wide events table (`all` command) and the Vault events table now show a human-readable age (e.g. `3m`, `2h`, `4d`) derived from `lastTimestamp`.
+
+### Fixed
+- **vault.py** — `vault-agent-injector` pods are now excluded from Vault diagnostics; previously the injector sidecar pods were incorrectly included in the server pod scan and unseal checks.
+- **vault.py** — HA unseal Step 2 now lists only the other *sealed* (unhealthy) pods instead of all vault pods including already-healthy replicas.
+- **utils.py** — when `kubectl logs` fails with a `NotFound` error (e.g. after a rollout restart), the tool now automatically looks up the replacement running pod that shares the same deployment base name and retries the log command against it, instead of showing an error.
+
 ## [0.3.0] — 2026-04-19
 
 ### Security

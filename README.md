@@ -59,7 +59,7 @@ uv run main.py pods -n my-app-namespace
 
 ### 2. `all` — Full Cluster Diagnostic
 
-Checks Nodes (NotReady), PVCs (Unbound), and Workloads (desired vs ready replicas), then scans cluster-wide Warning events. Prints a complete listing of all nodes, PVCs, and workloads after each section. After displaying warning events, emits up to 5 targeted command suggestions based on the event reasons (`BackOff`, `OOMKilling`, `FailedScheduling`, `FailedMount`, `Unhealthy`, `Evicted`, `NodeNotReady`, etc.).
+Checks Nodes (NotReady), PVCs (Unbound), and Workloads (desired vs ready replicas), then scans cluster-wide Warning events. Prints a complete listing of all nodes, PVCs, and workloads after each section. The warning events table includes a **Last Seen** column showing human-readable ages (`3m`, `2h`, `4d`). After displaying warning events, emits up to 5 targeted command suggestions based on the event reasons (`BackOff`, `OOMKilling`, `FailedScheduling`, `FailedMount`, `Unhealthy`, `Evicted`, `NodeNotReady`, etc.).
 
 ```bash
 uv run main.py all
@@ -110,7 +110,7 @@ uv run main.py helm -n ingress-nginx
 
 ### 6. `vault` — HashiCorp Vault
 
-Locates Vault pods automatically by label (`app.kubernetes.io/name=vault` or `app=vault`). Checks pod readiness, StatefulSet replica health, and warning events. If Vault is **sealed**, detects it via `vault status`, shows current unseal progress, and prints step-by-step unseal instructions for single-node and HA deployments.
+Locates Vault **server** pods automatically by label (`app.kubernetes.io/name=vault` or `app=vault`), excluding injector sidecars. Checks pod readiness, StatefulSet replica health, and warning events (with **Last Seen** ages). If Vault is **sealed**, detects it via `vault status`, shows current unseal progress, and prints step-by-step unseal instructions listing only the other sealed replicas for HA deployments.
 
 ```bash
 uv run main.py vault
