@@ -76,7 +76,8 @@ def run_cmd(cmd: list[str]) -> str:
     except subprocess.CalledProcessError as e:
         if "NotFound" in e.stderr and len(cmd) > 2 and cmd[1] == "logs":
             pod_name = cmd[2]
-            namespace = cmd[cmd.index("-n") + 1] if "-n" in cmd else None
+            ns_idx = cmd.index("-n") if "-n" in cmd else -1
+            namespace = cmd[ns_idx + 1] if 0 <= ns_idx < len(cmd) - 1 else None
             if namespace:
                 new_pod = _find_replacement_pod(pod_name, namespace)
                 if new_pod:

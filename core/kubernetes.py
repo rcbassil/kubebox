@@ -291,7 +291,16 @@ def check_all_objects(namespace: str = None):
     if deps or sts:
         console.print(all_workloads)
 
-    # Check 4: The Ultimate Catch-All -> K8s Warning Events in the last 15m
+    # Check 4: Services
+    _check_services(v1, namespace)
+
+    # Check 5: ConfigMaps
+    _check_configmaps(v1, namespace)
+
+    # Check 6: Secrets (names and types only — values never shown)
+    _check_secrets(v1, namespace)
+
+    # Check 7: The Ultimate Catch-All -> K8s Warning Events in the last 15m
     console.print(
         "\n[bold yellow]Gathering Recent Warnings (All Object Types)...[/bold yellow]"
     )
@@ -431,6 +440,151 @@ def _suggest_from_events(items: list):
         cmd = cmd_tpl.format(kind_lower=kind.lower(), name=name, ns=ns)
         print_tip(f"[{reason}] {tip_text}", cmd)
         suggestions += 1
+
+
+_SYSTEM_NAMESPACES = {"kube-system", "kube-public", "kube-node-lease"}
+
+
+def _check_services(v1, namespace: str = None):
+    console.print("\n[bold blue]Checking Services...[/bold blue]")
+    try:
+        svcs = (
+            v1.list_namespaced_service(namespace).items
+            if namespace
+            else v1.list_service_for_all_namespaces().items
+        )
+        eps_map: dict[tuple, int] = {}
+        try:
+            eps = (
+                v1.list_namespaced_endpoints(namespace).items
+                if namespace
+                else v1.list_endpoints_for_all_namespaces().items
+            )
+            for ep in eps:
+                ready = sum(len(s.addresses or []) for s in ep.subsets or [])
+                eps_map[(ep.metadata.namespace, ep.metadata.name)] = ready
+        except Exception:
+            pass
+
+        rows = []
+        no_endpoint_svcs = []
+        for svc in svcs:
+            ns = svc.metadata.namespace
+            name = svc.metadata.name
+            svc_type = svc.spec.type or "ClusterIP"
+            ports = ", ".join(f"{p.port}/{p.protocol}" for p in (svc.spec.ports or []))
+            has_selector = bool(svc.spec.selector)
+            ready = eps_map.get((ns, name), 0)
+            no_eps = has_selector and ready == 0 and svc_type != "ExternalName"
+            if no_eps:
+                no_endpoint_svcs.append((ns, name))
+            rows.append((ns, name, svc_type, ports, ready, no_eps))
+
+        if no_endpoint_svcs:
+            fail_table = Table(
+                title="Services with No Ready Endpoints",
+                show_header=True,
+                header_style="bold magenta",
+            )
+            fail_table.add_column("Namespace", style="cyan")
+            fail_table.add_column("Name", style="blue")
+            fail_table.add_column("Type", style="yellow")
+            fail_table.add_column("Ports", style="dim")
+            for ns, name, svc_type, ports, _, no_eps in rows:
+                if no_eps:
+                    fail_table.add_row(ns, name, svc_type, ports)
+            console.print(fail_table)
+            ns0, name0 = no_endpoint_svcs[0]
+            print_tip(
+                "A Service with no ready endpoints means its selector matches no Running pods. Check pod labels or deployment health.",
+                f"kubectl describe service {name0} -n {ns0}",
+            )
+        else:
+            console.print("[green]✓ All Services have ready endpoints[/green]")
+
+        all_table = Table(
+            title="All Services", show_header=True, header_style="bold magenta"
+        )
+        all_table.add_column("Namespace", style="cyan")
+        all_table.add_column("Name", style="blue")
+        all_table.add_column("Type", style="yellow")
+        all_table.add_column("Ports", style="dim")
+        all_table.add_column("Ready Endpoints", justify="right")
+        for ns, name, svc_type, ports, ready, no_eps in rows:
+            color = "red" if no_eps else "green"
+            all_table.add_row(ns, name, svc_type, ports, f"[{color}]{ready}[/{color}]")
+        if rows:
+            console.print(all_table)
+    except Exception as e:
+        console.print(f"[bold red]Error checking Services:[/bold red] {e}")
+
+
+def _check_configmaps(v1, namespace: str = None):
+    console.print("\n[bold blue]ConfigMaps...[/bold blue]")
+    try:
+        cms = (
+            v1.list_namespaced_config_map(namespace).items
+            if namespace
+            else v1.list_config_map_for_all_namespaces().items
+        )
+        if not namespace:
+            cms = [c for c in cms if c.metadata.namespace not in _SYSTEM_NAMESPACES]
+
+        if not cms:
+            console.print("[dim]No ConfigMaps found.[/dim]")
+            return
+
+        table = Table(title="ConfigMaps", show_header=True, header_style="bold magenta")
+        table.add_column("Namespace", style="cyan")
+        table.add_column("Name", style="blue")
+        table.add_column("Keys", justify="right", style="dim")
+        for cm in cms:
+            keys = len(cm.data or {}) + len(cm.binary_data or {})
+            table.add_row(cm.metadata.namespace, cm.metadata.name, str(keys))
+        console.print(table)
+    except Exception as e:
+        console.print(f"[bold red]Error checking ConfigMaps:[/bold red] {e}")
+
+
+def _check_secrets(v1, namespace: str = None):
+    console.print(
+        "\n[bold blue]Secrets (names and types only — values never shown)...[/bold blue]"
+    )
+    try:
+        secrets = (
+            v1.list_namespaced_secret(namespace).items
+            if namespace
+            else v1.list_secret_for_all_namespaces().items
+        )
+        if not namespace:
+            secrets = [
+                s for s in secrets if s.metadata.namespace not in _SYSTEM_NAMESPACES
+            ]
+
+        if not secrets:
+            console.print("[dim]No Secrets found.[/dim]")
+            return
+
+        table = Table(
+            title="Secrets — names and types only",
+            show_header=True,
+            header_style="bold magenta",
+        )
+        table.add_column("Namespace", style="cyan")
+        table.add_column("Name", style="blue")
+        table.add_column("Type", style="yellow")
+        table.add_column("Keys", justify="right", style="dim")
+        for secret in secrets:
+            keys = len(secret.data or {})
+            table.add_row(
+                secret.metadata.namespace,
+                secret.metadata.name,
+                secret.type or "Opaque",
+                str(keys),
+            )
+        console.print(table)
+    except Exception as e:
+        console.print(f"[bold red]Error checking Secrets:[/bold red] {e}")
 
 
 def describe_object(kind: str, name: str, namespace: str = None):

@@ -135,7 +135,16 @@ uv run main.py kustomize -n custom-flux-system
 uv run main.py kustomize -b ./clusters/my-local-cluster
 ```
 
-### 9. `describe` — Safe Describe Wrapper
+### 9. `crd` — Custom Resource Definitions
+
+Discovers all CRDs in the cluster, fetches their instances, and surfaces any with non-ready conditions (`Ready`, `Available`, `Synced`, or `Healthy` = `False`). Shows a summary table grouped by CRD and namespace, then a detailed failing-instances table with condition messages.
+
+```bash
+uv run main.py crd
+uv run main.py crd -n my-namespace
+```
+
+### 11. `describe` — Safe Describe Wrapper
 
 Fetches and syntax-highlights the describe output of any Kubernetes object.
 
@@ -144,7 +153,7 @@ uv run main.py describe deployment frontend -n prod
 uv run main.py describe node my-node
 ```
 
-### 10. `logs` — Safe Logs Wrapper
+### 12. `logs` — Safe Logs Wrapper
 
 Fetches and prints logs for any pod or deployment. Supports tail size and previous-container flags.
 
@@ -153,7 +162,7 @@ uv run main.py logs my-crashing-pod-123 -n prod
 uv run main.py logs my-crashing-pod-123 -n prod -t 50 -p
 ```
 
-### 11. `verify-readonly` — Read-Only Safeguard Check
+### 13. `verify-readonly` — Read-Only Safeguard Check
 
 Confirms that the internal `run_cmd` utility blocks mutative commands (`apply`, `delete`, `patch`, etc.).
 

@@ -14,6 +14,7 @@ from core.kong import check_kong_errors
 from core.kustomize import check_kustomize_errors
 from core.vault import check_vault_status
 from core.trace import trace_object
+from core.crd import check_crd_status
 
 app = typer.Typer(
     help="🤖 Read-Only Kubernetes DevOps/SRE Assistant Toolbox", no_args_is_help=True
@@ -126,6 +127,18 @@ def trace(
         )
     )
     trace_object(kind, name, namespace)
+
+
+@app.command()
+def crd(
+    namespace: str = typer.Option(
+        None, "--namespace", "-n", help="Filter instances by a specific namespace."
+    ),
+):
+    """Scan all Custom Resource Definitions and surface instances with non-ready conditions."""
+    msg = f" in namespace '{namespace}'" if namespace else ""
+    console.print(Panel.fit(f"[bold cyan]Running CRD Diagnostic{msg}...[/bold cyan]"))
+    check_crd_status(namespace)
 
 
 @app.command()

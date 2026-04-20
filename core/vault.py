@@ -1,5 +1,6 @@
 import json
 import re
+from shlex import quote
 from rich.table import Table
 from rich.panel import Panel
 from core.utils import run_cmd, run_cmd_allow_fail, console, print_tip, fmt_age
@@ -138,7 +139,7 @@ def _print_unseal_tips(pod_name: str, ns: str, all_pod_names: list[str]):
     ha_step = ""
     if ha_pods:
         ha_cmds = "\n".join(
-            f"[bold green]> kubectl exec -n '{ns}' '{p}' -- vault operator unseal <unseal-key>[/bold green]"
+            f"[bold green]> kubectl exec -n {quote(ns)} {quote(p)} -- vault operator unseal <unseal-key>[/bold green]"
             for p in ha_pods
         )
         ha_step = (
@@ -152,7 +153,7 @@ def _print_unseal_tips(pod_name: str, ns: str, all_pod_names: list[str]):
         + progress_info
         + "\nData is inaccessible until enough unseal keys (or a cloud auto-unseal) are applied.\n\n"
         "[bold yellow]Step 1:[/bold yellow] Apply an unseal key (repeat until the threshold is met):\n"
-        f"[bold green]> kubectl exec -n '{ns}' '{pod_name}' -- vault operator unseal <unseal-key>[/bold green]\n\n"
+        f"[bold green]> kubectl exec -n {quote(ns)} {quote(pod_name)} -- vault operator unseal <unseal-key>[/bold green]\n\n"
         + ha_step
         + "[dim]If you use auto-unseal (AWS KMS, GCP CKMS, Azure Key Vault), check that the IAM/service account permissions are intact.[/dim]"
     )

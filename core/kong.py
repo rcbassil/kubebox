@@ -1,3 +1,4 @@
+from shlex import quote
 from kubernetes import client, config
 from rich.table import Table
 from core.utils import console, print_tip
@@ -48,7 +49,7 @@ def check_kong_errors():
                     failing = True
                     print_tip(
                         "Kong proxy errors usually trigger from unresolvable upstream Services or invalid KongPlugin objects blocking the config sync.",
-                        f"kubectl get kongplugins -n '{pod.metadata.namespace}' && kubectl get ingress -n '{pod.metadata.namespace}'",
+                        f"kubectl get kongplugins -n {quote(pod.metadata.namespace)} && kubectl get ingress -n {quote(pod.metadata.namespace)}",
                     )
             except Exception as e:
                 console.print(

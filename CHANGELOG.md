@@ -2,6 +2,18 @@
 
 All notable changes to this project are documented here.
 
+## [0.5.0] — 2026-04-19
+
+### Added
+- **`crd` command** — discovers all Custom Resource Definitions, fetches their instances cluster-wide or in a specific namespace, and surfaces any with `Ready=False` (or `Available`, `Synced`, `Healthy`) conditions. Shows a summary table grouped by CRD and namespace, plus a detailed failing-instances table with truncated messages.
+
+### Fixed
+- **crd.py** — CRD spec key access (`spec.names.plural`, `spec.group`) is now wrapped in `try/except (KeyError, TypeError)` to skip malformed CRD objects instead of crashing.
+- **crd.py** — Removed unused `kind` variable from the failing-instances tip section.
+- **vault.py** — `kubectl exec` commands in unseal instructions now use `shlex.quote()` for pod and namespace names, preventing shell injection with unusual names.
+- **kong.py** — `kubectl get` tip command now uses `shlex.quote()` for the namespace argument.
+- **utils.py** — Fixed potential `IndexError` when `-n` appears as the last element of a command list in the pod-restart recovery path.
+
 ## [0.4.0] — 2026-04-19
 
 ### Added
