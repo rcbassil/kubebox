@@ -1,10 +1,10 @@
 import re
 from datetime import datetime, timedelta, timezone
 
-from kubernetes import client, config
+from kubernetes import client
 from rich.table import Table
 
-from core.utils import console, fmt_age
+from core.utils import console, fmt_age, load_kube_config
 
 _SYSTEM_NAMESPACES = {"kube-system", "kube-public", "kube-node-lease"}
 
@@ -41,7 +41,7 @@ def check_events(
 ):
     """List and filter Kubernetes events with optional type, reason, and age filters."""
     try:
-        config.load_kube_config()
+        load_kube_config()
     except Exception as e:
         console.print(f"[bold red]Failed to load kube config:[/bold red] {e}")
         return

@@ -1,13 +1,13 @@
 from shlex import quote
-from kubernetes import client, config
+from kubernetes import client
 from rich.table import Table
-from core.utils import console, print_tip
+from core.utils import console, print_tip, load_kube_config
 
 
 def check_kong_errors():
     """Scan latest Kong ingress controller logs for Errors."""
     try:
-        config.load_kube_config()
+        load_kube_config()
     except Exception:
         return
 

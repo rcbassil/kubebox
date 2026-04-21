@@ -1,7 +1,7 @@
 import os
-from kubernetes import client, config
+from kubernetes import client
 from rich.table import Table
-from core.utils import console, print_tip, run_cmd_allow_fail
+from core.utils import console, print_tip, run_cmd_allow_fail, load_kube_config
 
 
 def check_kustomize_errors(namespace: str = None, local_path: str = None):
@@ -30,7 +30,7 @@ def check_kustomize_errors(namespace: str = None, local_path: str = None):
 
     # If no local path, check cluster Flux Kustomizations
     try:
-        config.load_kube_config()
+        load_kube_config()
     except Exception:
         return
 

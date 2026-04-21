@@ -2,8 +2,6 @@ import json
 from rich.table import Table
 from core.utils import run_cmd, console, print_tip
 
-_READY_CONDITIONS = {"Ready", "Available", "Synced", "Healthy"}
-
 
 def check_crd_status(namespace: str = None):
     """Discover all CRDs, fetch their instances, and surface any with non-ready conditions."""
@@ -65,21 +63,23 @@ def check_crd_status(namespace: str = None):
             item_name = meta.get("name", "unknown")
             conditions = item.get("status", {}).get("conditions", [])
 
-            ready_status = "Unknown"
-            message = ""
-            for c in conditions:
-                if c.get("type") in _READY_CONDITIONS:
-                    ready_status = c.get("status", "Unknown")
-                    message = c.get("message", "")
-                    break
+            unhealthy = [
+                (c.get("type", ""), c.get("status", ""), c.get("message", ""))
+                for c in conditions
+                if c.get("status") in ("False", "Unknown")
+            ]
 
             key = (crd_name, item_ns)
             if key not in summary:
-                summary[key] = [0, 0]  # [healthy, failing]
+                summary[key] = [0, 0]
 
-            if ready_status == "False":
+            if unhealthy:
                 summary[key][1] += 1
-                failing.append((crd_name, item_ns, item_name, ready_status, message))
+                condition_summary = "; ".join(f"{t}={s}" for t, s, _ in unhealthy[:3])
+                message = next((m for _, _, m in unhealthy if m), "")
+                failing.append(
+                    (crd_name, item_ns, item_name, condition_summary, message)
+                )
             else:
                 summary[key][0] += 1
 
@@ -118,16 +118,18 @@ def check_crd_status(namespace: str = None):
         fail_table.add_column("CRD", style="blue")
         fail_table.add_column("Namespace", style="cyan")
         fail_table.add_column("Name", style="blue")
-        fail_table.add_column("Ready", justify="center")
+        fail_table.add_column("Conditions", style="yellow")
         fail_table.add_column("Message", style="dim white")
 
-        for crd_name, item_ns, item_name, ready, message in failing:
+        for crd_name, item_ns, item_name, condition_summary, message in failing:
             msg = message[:100] + "..." if len(message) > 100 else message
-            fail_table.add_row(crd_name, item_ns, item_name, "[red]False[/red]", msg)
+            fail_table.add_row(
+                crd_name, item_ns, item_name, f"[red]{condition_summary}[/red]", msg
+            )
 
         console.print(fail_table)
 
-        first_crd, first_ns, first_name, *_ = failing[0]
+        first_crd, first_ns, first_name, *_ = failing[0]  # noqa: F841
         print_tip(
             "A custom resource with Ready=False usually means its controller detected a reconciliation error. Check the controller logs or describe the object.",
             f"kubectl describe {first_crd.split('.')[0]} {first_name} -n {first_ns}",

@@ -20,6 +20,25 @@ A standalone, read-only Python CLI designed to act as an AI-powered DevOps/SRE a
 - `helm` CLI (if you intend to use the Helm diagnostics)
 - `ANTHROPIC_API_KEY` environment variable (for the `ask` command and `logs --analyze`)
 
+## Global flags
+
+Every command supports these flags:
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--context` | `-c` | Target a specific kubeconfig context (e.g. `staging`, `production`). Injected automatically into all `kubectl` and `helm` calls. |
+| `--namespace` | `-n` | Filter results to a specific namespace (where applicable). |
+
+`pods`, `deployments`, and `events` additionally support:
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--watch` | `-w` | Continuously re-run the diagnostic and refresh the screen. |
+| `--interval` | `-i` | Polling interval in seconds when `--watch` is active (default: `5` for pods/deployments, `10` for events). |
+| `--output` | `-o` | Return raw structured output: `json` or `yaml`. Bypasses Rich display for scripting. |
+
+`helm` and `crd` also support `--output / -o`.
+
 ## Installation
 
 1. Clone or navigate to the repository directory.
@@ -55,6 +74,14 @@ sudo mv ./dist/kubebox /usr/local/bin/kubebox
 
 Commands are listed in alphabetical order. Use `-h` or `--help` on any command for details.
 
+### `contexts` — List Kubeconfig Contexts
+
+Lists all contexts from your kubeconfig in a table and marks the active one with `✓`. Use the `Name` value with `--context` on any other command.
+
+```bash
+kubebox contexts
+```
+
 ### `all` — Full Cluster Diagnostic
 
 Checks Nodes (NotReady), PVCs (Unbound), Workloads (Deployments, StatefulSets, DaemonSets), Services, Ingresses, Jobs, CronJobs, HPAs, PersistentVolumes, Namespaces, ConfigMaps, and Secrets. Finishes with a cluster-wide Warning events table and up to 5 targeted command suggestions based on event reasons (`BackOff`, `OOMKilling`, `FailedScheduling`, `FailedMount`, `Unhealthy`, `Evicted`, `NodeNotReady`, etc.).
@@ -66,20 +93,22 @@ kubebox all -n my-app-namespace
 
 ### `ask` — AI Cluster Analysis
 
-Gathers live pod failures and Warning events as context, then streams a plain-English root-cause analysis and recommendations from Claude (`claude-opus-4-7`). Supports `-n` to focus on a specific namespace. Requires `ANTHROPIC_API_KEY`.
+Gathers live pod failures and Warning events as context, then streams a plain-English root-cause analysis and recommendations from Claude (`claude-opus-4-7`). Automatically fetches the last 50 lines of logs from up to 3 currently failing pods and includes them in the AI context — no need to manually run `kubebox logs` first. Supports `-n` to focus on a specific namespace. Requires `ANTHROPIC_API_KEY`.
 
 ```bash
 kubebox ask "why is my app crashlooping?" -n prod
 kubebox ask "are there any scheduling issues?"
+kubebox ask "what's wrong?" --context staging -n payments
 ```
 
 ### `crd` — Custom Resource Definitions
 
-Discovers all CRDs in the cluster, fetches their instances, and surfaces any with non-ready conditions (`Ready`, `Available`, `Synced`, or `Healthy` = `False`). Shows a summary table grouped by CRD and namespace, then a detailed failing-instances table with condition messages.
+Discovers all CRDs in the cluster, fetches their instances, and surfaces any with unhealthy conditions. All conditions on every instance are inspected — any condition with `status=False` or `status=Unknown` is flagged, regardless of condition type. Shows a summary table grouped by CRD and namespace, then a detailed failing-instances table listing the unhealthy condition names and their statuses.
 
 ```bash
 kubebox crd
 kubebox crd -n my-namespace
+kubebox crd -o json | jq '.items[].metadata.name'
 ```
 
 ### `dashboard` — TUI Dashboard
@@ -99,6 +128,8 @@ Scans all namespaces (or a specific namespace) for degraded deployments. Surface
 ```bash
 kubebox deployments
 kubebox deployments -n my-app-namespace
+kubebox deployments --watch --interval 10
+kubebox deployments --context production -o json
 ```
 
 ### `describe` — Safe Describe Wrapper
@@ -112,13 +143,15 @@ kubebox describe node my-node
 
 ### `events` — Kubernetes Events Browser
 
-Fetches cluster events and supports filtering by namespace, type (`Warning` / `Normal`), reason, or age.
+Fetches cluster events and supports filtering by namespace, type (`Warning` / `Normal`), reason, or age. Use `--watch` to continuously poll for new events.
 
 ```bash
 kubebox events
 kubebox events -n prod
 kubebox events --type Warning --since 30m
 kubebox events --reason BackOff
+kubebox events --watch --interval 15
+kubebox events -o json | jq '[.items[] | select(.type=="Warning")]'
 ```
 
 ### `flux` — FluxCD Synchronization
@@ -131,11 +164,12 @@ kubebox flux
 
 ### `helm` — Helm Releases
 
-Finds releases not in `deployed` state (e.g. `failed`, `pending-install`, `pending-upgrade`). Prints a full listing of all releases with status, chart, and app version.
+Finds releases not in `deployed` state (e.g. `failed`, `pending-install`, `pending-upgrade`). For each failing release, automatically fetches and displays the last 5 revision history entries — including status, chart version, and the error description — so you can see exactly when and how the release broke. Prints a full listing of all releases with status, chart, and app version.
 
 ```bash
 kubebox helm
 kubebox helm -n ingress-nginx
+kubebox helm --context staging -o yaml
 ```
 
 ### `interactive` — Interactive Shell
@@ -190,6 +224,8 @@ Scans all namespaces for pods in `CrashLoopBackOff`, `ImagePullBackOff`, `Pendin
 ```bash
 kubebox pods
 kubebox pods -n my-app-namespace
+kubebox pods --watch
+kubebox pods --context production -o json | jq '[.items[] | select(.status.phase!="Running")]'
 ```
 
 ### `rbac` — RBAC Diagnostic

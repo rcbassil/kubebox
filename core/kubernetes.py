@@ -1,16 +1,50 @@
-from kubernetes import client, config
-from core.utils import console, run_cmd, print_tip, fmt_age
+from kubernetes import client
+from core.utils import console, run_cmd, print_tip, fmt_age, load_kube_config
 from rich.table import Table
 import json
 
 
 def init_k8s():
     try:
-        config.load_kube_config()
+        load_kube_config()
         return True
     except Exception as e:
         console.print(f"[bold red]Failed to load kube config:[/bold red] {e}")
         return False
+
+
+def get_failing_pods(namespace: str = None) -> list[tuple[str, str]]:
+    """Return (namespace, name) pairs for pods in a crash/error/pending state."""
+    if not init_k8s():
+        return []
+    v1 = client.CoreV1Api()
+    try:
+        pods = (
+            v1.list_namespaced_pod(namespace).items
+            if namespace
+            else v1.list_pod_for_all_namespaces().items
+        )
+    except Exception:
+        return []
+    failing = []
+    _BAD_REASONS = {
+        "CrashLoopBackOff",
+        "ErrImagePull",
+        "ImagePullBackOff",
+        "CreateContainerConfigError",
+    }
+    for pod in pods:
+        for cs in pod.status.container_statuses or []:
+            if cs.state.waiting and cs.state.waiting.reason in _BAD_REASONS:
+                failing.append((pod.metadata.namespace, pod.metadata.name))
+                break
+            if cs.state.terminated and cs.state.terminated.exit_code != 0:
+                failing.append((pod.metadata.namespace, pod.metadata.name))
+                break
+        else:
+            if pod.status.phase in ("Pending", "Failed"):
+                failing.append((pod.metadata.namespace, pod.metadata.name))
+    return failing
 
 
 def check_crashloop_pods(namespace: str = None):

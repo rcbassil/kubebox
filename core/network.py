@@ -1,7 +1,7 @@
-from kubernetes import client, config
+from kubernetes import client
 from rich.table import Table
 
-from core.utils import console, print_tip
+from core.utils import console, print_tip, load_kube_config
 
 _SYSTEM_NAMESPACES = {"kube-system", "kube-public", "kube-node-lease"}
 
@@ -9,7 +9,7 @@ _SYSTEM_NAMESPACES = {"kube-system", "kube-public", "kube-node-lease"}
 def check_network_status(namespace: str = None):
     """Check CoreDNS health, services with no endpoints, and NetworkPolicy coverage."""
     try:
-        config.load_kube_config()
+        load_kube_config()
     except Exception as e:
         console.print(f"[bold red]Failed to load kube config:[/bold red] {e}")
         return

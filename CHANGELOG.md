@@ -2,6 +2,22 @@
 
 All notable changes to this project are documented here.
 
+## [0.9.0] — 2026-04-21
+
+### Added
+- **`contexts` command** — lists all available kubeconfig contexts in a table with the active context marked with `✓`. Shows context name, cluster, default namespace, and user.
+- **`--context / -c` flag (all commands)** — every command now accepts a `--context` flag to target a specific kubeconfig context. The context is injected automatically into all `kubectl` and `helm` subprocess calls (`--context` and `--kube-context` respectively), so no manual `kubectl config use-context` is needed.
+- **`--watch / -w` flag** (`pods`, `deployments`, `events`) — continuously clears the screen and re-runs the diagnostic on an interval. Default interval is 5 s for `pods`/`deployments` and 10 s for `events`. Stop with `Ctrl+C`.
+- **`--interval / -i` flag** (`pods`, `deployments`, `events`) — sets the polling interval in seconds when `--watch` is active.
+- **`--output / -o` flag** (`pods`, `deployments`, `events`, `helm`, `crd`) — bypasses Rich diagnostic output and returns raw `kubectl get` / `helm list` output in `json` or `yaml` format, suitable for scripting and piping (e.g. `kubebox pods -o json | jq '...'`).
+- **`ask` auto-fetches failing pod logs** — after gathering pod state and Warning events, the `ask` command now automatically collects the last 50 lines of logs from up to 3 currently failing pods and includes them in the AI context, eliminating the need to manually run `kubebox logs` before asking a question.
+- **Helm release history** — when the `helm` command finds a release in a non-stable state (`failed`, `pending-install`, `pending-upgrade`, `pending-rollback`), it automatically fetches and displays the last 5 revision history entries (revision number, timestamp, status, chart, app version, description) for each affected release.
+- **Dynamic CRD condition scanning** — the `crd` command now inspects **all** conditions on every custom resource instance, not just the hardcoded set (`Ready`, `Available`, `Synced`, `Healthy`). Any condition with `status=False` or `status=Unknown` is flagged. The failing-instances table now shows the full list of unhealthy condition names and statuses (e.g. `Provisioned=False; Synced=Unknown`) instead of just "False".
+
+### Changed
+- **`core/utils.py`** — added `set_context()`, `get_context()`, `load_kube_config()`, and `_inject_context()` helpers to centralize kubeconfig context management. All modules now call `utils.load_kube_config()` instead of `config.load_kube_config()` directly, ensuring the active context is always respected.
+- **`crd` failing-instances table** — "Ready" column replaced with "Conditions" column showing the full set of unhealthy condition types and statuses.
+
 ## [0.8.0] — 2026-04-21
 
 ### Added

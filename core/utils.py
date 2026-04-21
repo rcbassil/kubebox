@@ -9,6 +9,35 @@ console = Console()
 
 _MUTATIVE_WORDS = ["apply", "create", "delete", "edit", "patch", "scale", "replace"]
 
+_current_context: str | None = None
+
+
+def set_context(context: str | None) -> None:
+    global _current_context
+    _current_context = context
+
+
+def get_context() -> str | None:
+    return _current_context
+
+
+def load_kube_config() -> None:
+    """Load kubeconfig, respecting the active context set via set_context()."""
+    from kubernetes import config as _k8s_config
+
+    _k8s_config.load_kube_config(context=_current_context)
+
+
+def _inject_context(cmd: list[str]) -> list[str]:
+    """Inject --context / --kube-context into kubectl/helm commands when a context is active."""
+    if not _current_context:
+        return cmd
+    if cmd and cmd[0] == "kubectl" and "--context" not in cmd:
+        return [cmd[0], "--context", _current_context] + cmd[1:]
+    if cmd and cmd[0] == "helm" and "--kube-context" not in cmd:
+        return [cmd[0], "--kube-context", _current_context] + cmd[1:]
+    return cmd
+
 
 def _check_mutative(cmd: list[str]):
     """Exit if cmd contains a mutative kubectl verb."""
@@ -70,6 +99,7 @@ def _find_replacement_pod(old_pod_name: str, namespace: str) -> str | None:
 def run_cmd(cmd: list[str]) -> str:
     """Run a shell command and return its stdout. Prints errors via Rich."""
     _check_mutative(cmd)
+    cmd = _inject_context(cmd)
     try:
         result = subprocess.run(cmd, check=True, text=True, capture_output=True)
         return result.stdout
@@ -104,6 +134,7 @@ def run_cmd(cmd: list[str]) -> str:
 def run_cmd_allow_fail(cmd: list[str]) -> tuple[str, str, int]:
     """Run a command with security check but return (stdout, stderr, returncode) without raising."""
     _check_mutative(cmd)
+    cmd = _inject_context(cmd)
     result = subprocess.run(cmd, text=True, capture_output=True)
     return result.stdout, result.stderr, result.returncode
 

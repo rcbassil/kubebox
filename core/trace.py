@@ -1,7 +1,7 @@
-from kubernetes import client, config
+from kubernetes import client
 from rich.tree import Tree
 from rich.panel import Panel
-from core.utils import console
+from core.utils import console, load_kube_config
 
 _OK = "[green]✓[/green]"
 _FAIL = "[red]✗[/red]"
@@ -22,7 +22,7 @@ _SUPPORTED_KINDS = [
 
 def _init() -> bool:
     try:
-        config.load_kube_config()
+        load_kube_config()
         return True
     except Exception as e:
         console.print(f"[bold red]Failed to load kube config:[/bold red] {e}")

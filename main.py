@@ -1,23 +1,27 @@
 import io
 import os
 import shlex
+import time
 from contextlib import redirect_stdout
+from typing import Optional
 
 import typer
 from typer.core import TyperGroup
 from rich.console import Console
-
 from rich.panel import Panel
+from rich.table import Table
 from prompt_toolkit import PromptSession, HTML
 from prompt_toolkit.completion import WordCompleter
 from prompt_toolkit.history import FileHistory
 
+from core.utils import set_context, run_cmd
 from core.kubernetes import (
     check_crashloop_pods,
     check_deployments,
     check_all_objects,
     describe_object,
     check_logs,
+    get_failing_pods,
 )
 from core.flux import check_flux_status
 from core.helm import check_helm_status
@@ -46,33 +50,159 @@ app = typer.Typer(
 )
 console = Console()
 
+_OUTPUT_CHOICES = ("json", "yaml")
+
+
+def _apply_context(context: Optional[str]) -> None:
+    set_context(context or None)
+
+
+def _validate_output(output: Optional[str]) -> Optional[str]:
+    if output and output.lower() not in _OUTPUT_CHOICES:
+        console.print(
+            f"[bold red]--output must be one of: {', '.join(_OUTPUT_CHOICES)}[/bold red]"
+        )
+        raise typer.Exit(1)
+    return output.lower() if output else None
+
+
+def _raw_output(
+    resource: str, namespace: Optional[str], output: str, all_ns: bool = True
+) -> None:
+    """Delegate structured output to kubectl get <resource> -o json/yaml."""
+    cmd = ["kubectl", "get", resource]
+    if namespace:
+        cmd.extend(["-n", namespace])
+    elif all_ns:
+        cmd.append("-A")
+    cmd.extend(["-o", output])
+    out = run_cmd(cmd)
+    if out:
+        print(out)
+
+
+def _watch_loop(interval: int, fn, *args, **kwargs) -> None:
+    """Repeatedly clear the screen and call fn(*args, **kwargs) every interval seconds."""
+    try:
+        while True:
+            console.clear()
+            console.print(
+                f"[dim]Watch mode — refreshing every {interval}s. Press Ctrl+C to stop.[/dim]\n"
+            )
+            fn(*args, **kwargs)
+            time.sleep(interval)
+    except KeyboardInterrupt:
+        console.print("\n[dim]Watch stopped.[/dim]")
+
+
+@app.command(name="contexts")
+def list_contexts():
+    """List all available kubeconfig contexts and highlight the active one."""
+    from kubernetes import config as k8s_config
+
+    try:
+        ctx_list, active = k8s_config.list_kube_config_contexts()
+    except Exception as e:
+        console.print(f"[bold red]Failed to load kubeconfig:[/bold red] {e}")
+        raise typer.Exit(1)
+
+    active_name = active["name"] if active else None
+    table = Table(
+        title="Kubeconfig Contexts",
+        show_header=True,
+        header_style="bold magenta",
+    )
+    table.add_column("Active", justify="center", width=6)
+    table.add_column("Name", style="blue")
+    table.add_column("Cluster", style="cyan")
+    table.add_column("Namespace", style="dim")
+    table.add_column("User", style="dim")
+
+    for ctx in ctx_list:
+        name = ctx["name"]
+        info = ctx.get("context", {})
+        is_active = name == active_name
+        marker = "[green]✓[/green]" if is_active else ""
+        table.add_row(
+            marker,
+            f"[bold]{name}[/bold]" if is_active else name,
+            info.get("cluster", "—"),
+            info.get("namespace", "default"),
+            info.get("user", "—"),
+        )
+    console.print(table)
+
 
 @app.command()
 def pods(
-    namespace: str = typer.Option(
+    namespace: Optional[str] = typer.Option(
         None, "--namespace", "-n", help="Filter by a specific namespace."
+    ),
+    context: Optional[str] = typer.Option(
+        None, "--context", "-c", help="Kubeconfig context to use."
+    ),
+    watch: bool = typer.Option(
+        False, "--watch", "-w", help="Continuously poll for changes."
+    ),
+    interval: int = typer.Option(
+        5, "--interval", "-i", help="Poll interval in seconds (with --watch)."
+    ),
+    output: Optional[str] = typer.Option(
+        None, "--output", "-o", help="Output format: json or yaml."
     ),
 ):
     """Scan the K8s cluster for pod failures or crashloops."""
+    _apply_context(context)
+    output = _validate_output(output)
+    if output:
+        _raw_output("pods", namespace, output)
+        return
     msg = f" in namespace '{namespace}'" if namespace else ""
-    console.print(
-        Panel.fit(f"[bold cyan]Running K8s Pod Diagnostic{msg}...[/bold cyan]")
-    )
-    check_crashloop_pods(namespace)
+    header = f"[bold cyan]Running K8s Pod Diagnostic{msg}...[/bold cyan]"
+    if watch:
+        _watch_loop(
+            interval,
+            lambda: (console.print(Panel.fit(header)), check_crashloop_pods(namespace)),
+        )
+    else:
+        console.print(Panel.fit(header))
+        check_crashloop_pods(namespace)
 
 
 @app.command()
 def deployments(
-    namespace: str = typer.Option(
+    namespace: Optional[str] = typer.Option(
         None, "--namespace", "-n", help="Filter by a specific namespace."
+    ),
+    context: Optional[str] = typer.Option(
+        None, "--context", "-c", help="Kubeconfig context to use."
+    ),
+    watch: bool = typer.Option(
+        False, "--watch", "-w", help="Continuously poll for changes."
+    ),
+    interval: int = typer.Option(
+        5, "--interval", "-i", help="Poll interval in seconds (with --watch)."
+    ),
+    output: Optional[str] = typer.Option(
+        None, "--output", "-o", help="Output format: json or yaml."
     ),
 ):
     """Scan the K8s cluster for degraded or unavailable deployments."""
+    _apply_context(context)
+    output = _validate_output(output)
+    if output:
+        _raw_output("deployments", namespace, output)
+        return
     msg = f" in namespace '{namespace}'" if namespace else ""
-    console.print(
-        Panel.fit(f"[bold cyan]Running K8s Deployment Diagnostic{msg}...[/bold cyan]")
-    )
-    check_deployments(namespace)
+    header = f"[bold cyan]Running K8s Deployment Diagnostic{msg}...[/bold cyan]"
+    if watch:
+        _watch_loop(
+            interval,
+            lambda: (console.print(Panel.fit(header)), check_deployments(namespace)),
+        )
+    else:
+        console.print(Panel.fit(header))
+        check_deployments(namespace)
 
 
 @app.command()
@@ -80,26 +210,54 @@ def ask(
     question: str = typer.Argument(
         ..., help="Question to ask about the cluster state."
     ),
-    namespace: str = typer.Option(
+    namespace: Optional[str] = typer.Option(
         None, "--namespace", "-n", help="Focus on a specific namespace."
+    ),
+    context: Optional[str] = typer.Option(
+        None, "--context", "-c", help="Kubeconfig context to use."
     ),
 ):
     """Ask an AI to analyze live cluster diagnostics and answer your question."""
+    _apply_context(context)
     console.print(Panel.fit("[bold cyan]Gathering diagnostics...[/bold cyan]"))
+
     buf = io.StringIO()
     with redirect_stdout(buf):
         check_crashloop_pods(namespace)
         check_events(namespace, event_type="Warning")
-    ai_ask(question, buf.getvalue())
+
+    diagnostic_context = buf.getvalue()
+
+    # Auto-fetch logs from up to 3 failing pods to give Claude more signal
+    failing = get_failing_pods(namespace)
+    if failing:
+        console.print(
+            f"[dim]Fetching logs from {min(len(failing), 3)} failing pod(s)...[/dim]"
+        )
+        log_sections = []
+        for pod_ns, pod_name in failing[:3]:
+            log_out = run_cmd(["kubectl", "logs", pod_name, "-n", pod_ns, "--tail=50"])
+            if log_out:
+                log_sections.append(f"Logs for {pod_ns}/{pod_name}:\n{log_out}")
+        if log_sections:
+            diagnostic_context += "\n\n--- Failing Pod Logs ---\n" + "\n\n".join(
+                log_sections
+            )
+
+    ai_ask(question, diagnostic_context)
 
 
 @app.command(name="all")
 def all_objects(
-    namespace: str = typer.Option(
+    namespace: Optional[str] = typer.Option(
         None, "--namespace", "-n", help="Filter by a specific namespace."
+    ),
+    context: Optional[str] = typer.Option(
+        None, "--context", "-c", help="Kubeconfig context to use."
     ),
 ):
     """Troubleshoot ALL K8s objects (Nodes, PVCs, Workloads, and global warnings)."""
+    _apply_context(context)
     msg = f" in namespace '{namespace}'" if namespace else " (Global)"
     console.print(
         Panel.fit(f"[bold cyan]Running Cluster Diagnostic{msg}...[/bold cyan]")
@@ -108,19 +266,42 @@ def all_objects(
 
 
 @app.command()
-def flux():
+def flux(
+    context: Optional[str] = typer.Option(
+        None, "--context", "-c", help="Kubeconfig context to use."
+    ),
+):
     """Scan FluxCD resources (Kustomizations, GitRepositories, HelmReleases) for sync failures."""
+    _apply_context(context)
     console.print(Panel.fit("[bold cyan]Running FluxCD Diagnostic...[/bold cyan]"))
     check_flux_status()
 
 
 @app.command()
 def helm(
-    namespace: str = typer.Option(
+    namespace: Optional[str] = typer.Option(
         None, "--namespace", "-n", help="Filter by a specific namespace."
+    ),
+    context: Optional[str] = typer.Option(
+        None, "--context", "-c", help="Kubeconfig context to use."
+    ),
+    output: Optional[str] = typer.Option(
+        None, "--output", "-o", help="Output format: json or yaml."
     ),
 ):
     """Scan Helm releases for failed or pending states."""
+    _apply_context(context)
+    output = _validate_output(output)
+    if output:
+        cmd = ["helm", "list", "-o", output]
+        if namespace:
+            cmd.extend(["-n", namespace])
+        else:
+            cmd.append("-A")
+        out = run_cmd(cmd)
+        if out:
+            print(out)
+        return
     msg = f" in namespace '{namespace}'" if namespace else ""
     console.print(Panel.fit(f"[bold cyan]Running Helm Diagnostic{msg}...[/bold cyan]"))
     check_helm_status(namespace)
@@ -128,40 +309,51 @@ def helm(
 
 @app.command()
 def kustomize(
-    namespace: str = typer.Option(
+    namespace: Optional[str] = typer.Option(
         None,
         "--namespace",
         "-n",
         help="Filter controller logs by a specific namespace.",
     ),
-    local_path: str = typer.Option(
+    local_path: Optional[str] = typer.Option(
         None,
         "--build",
         "-b",
         help="Path to a local directory to run a dry-run kustomize build validation.",
     ),
+    context: Optional[str] = typer.Option(
+        None, "--context", "-c", help="Kubeconfig context to use."
+    ),
 ):
     """Troubleshoot Kustomize by scanning controller logs or validating local YAML directories."""
-    from rich.panel import Panel
-
+    _apply_context(context)
     console.print(Panel.fit("[bold cyan]Running Kustomize Diagnostic...[/bold cyan]"))
     check_kustomize_errors(namespace, local_path)
 
 
 @app.command()
 def vault(
-    namespace: str = typer.Option(
+    namespace: Optional[str] = typer.Option(
         None, "--namespace", "-n", help="Vault namespace (auto-detected if omitted)."
+    ),
+    context: Optional[str] = typer.Option(
+        None, "--context", "-c", help="Kubeconfig context to use."
     ),
 ):
     """Scan Vault pods, StatefulSet replicas, and warning events for seal or health issues."""
+    _apply_context(context)
     console.print(Panel.fit("[bold cyan]Running Vault Diagnostic...[/bold cyan]"))
     check_vault_status(namespace)
 
 
 @app.command()
-def kong():
+def kong(
+    context: Optional[str] = typer.Option(
+        None, "--context", "-c", help="Kubeconfig context to use."
+    ),
+):
     """Scan Kong Ingress Controller proxy logs for errors."""
+    _apply_context(context)
     console.print(Panel.fit("[bold cyan]Running Kong Diagnostic...[/bold cyan]"))
     check_kong_errors()
 
@@ -176,8 +368,12 @@ def trace(
     namespace: str = typer.Option(
         "default", "--namespace", "-n", help="Namespace of the resource."
     ),
+    context: Optional[str] = typer.Option(
+        None, "--context", "-c", help="Kubeconfig context to use."
+    ),
 ):
     """Show a dependency tree for any K8s object to visualize root cause and object relationships."""
+    _apply_context(context)
     console.print(
         Panel.fit(
             f"[bold cyan]Tracing {kind}/{name} in namespace '{namespace}'...[/bold cyan]"
@@ -188,11 +384,22 @@ def trace(
 
 @app.command()
 def crd(
-    namespace: str = typer.Option(
+    namespace: Optional[str] = typer.Option(
         None, "--namespace", "-n", help="Filter instances by a specific namespace."
+    ),
+    context: Optional[str] = typer.Option(
+        None, "--context", "-c", help="Kubeconfig context to use."
+    ),
+    output: Optional[str] = typer.Option(
+        None, "--output", "-o", help="Output format: json or yaml."
     ),
 ):
     """Scan all Custom Resource Definitions and surface instances with non-ready conditions."""
+    _apply_context(context)
+    output = _validate_output(output)
+    if output:
+        _raw_output("crds", namespace, output, all_ns=False)
+        return
     msg = f" in namespace '{namespace}'" if namespace else ""
     console.print(Panel.fit(f"[bold cyan]Running CRD Diagnostic{msg}...[/bold cyan]"))
     check_crd_status(namespace)
@@ -200,49 +407,84 @@ def crd(
 
 @app.command()
 def events(
-    namespace: str = typer.Option(
+    namespace: Optional[str] = typer.Option(
         None, "--namespace", "-n", help="Filter by a specific namespace."
     ),
-    event_type: str = typer.Option(
+    event_type: Optional[str] = typer.Option(
         None, "--type", "-t", help="Filter by event type: Warning or Normal."
     ),
-    reason: str = typer.Option(
+    reason: Optional[str] = typer.Option(
         None, "--reason", "-r", help="Filter by reason (partial, case-insensitive)."
     ),
-    since: str = typer.Option(
+    since: Optional[str] = typer.Option(
         None,
         "--since",
         "-s",
         help="Show events newer than a duration (e.g. 30m, 2h, 1d).",
     ),
+    context: Optional[str] = typer.Option(
+        None, "--context", "-c", help="Kubeconfig context to use."
+    ),
+    watch: bool = typer.Option(
+        False, "--watch", "-w", help="Continuously poll for new events."
+    ),
+    interval: int = typer.Option(
+        10, "--interval", "-i", help="Poll interval in seconds (with --watch)."
+    ),
+    output: Optional[str] = typer.Option(
+        None, "--output", "-o", help="Output format: json or yaml."
+    ),
 ):
     """Browse and filter Kubernetes events by type, reason, or age."""
+    _apply_context(context)
+    output = _validate_output(output)
+    if output:
+        _raw_output("events", namespace, output)
+        return
     msg = f" in namespace '{namespace}'" if namespace else " (all namespaces)"
-    console.print(Panel.fit(f"[bold cyan]Fetching Events{msg}...[/bold cyan]"))
-    check_events(namespace, event_type, reason, since)
+    header = f"[bold cyan]Fetching Events{msg}...[/bold cyan]"
+    if watch:
+        _watch_loop(
+            interval,
+            lambda: (
+                console.print(Panel.fit(header)),
+                check_events(namespace, event_type, reason, since),
+            ),
+        )
+    else:
+        console.print(Panel.fit(header))
+        check_events(namespace, event_type, reason, since)
 
 
 @app.command()
 def network(
-    namespace: str = typer.Option(
+    namespace: Optional[str] = typer.Option(
         None,
         "--namespace",
         "-n",
         help="Filter endpoint and NetworkPolicy checks by namespace.",
     ),
+    context: Optional[str] = typer.Option(
+        None, "--context", "-c", help="Kubeconfig context to use."
+    ),
 ):
     """Check CoreDNS health, services with no endpoints, and NetworkPolicy coverage."""
+    _apply_context(context)
     console.print(Panel.fit("[bold cyan]Running Network Diagnostic...[/bold cyan]"))
     check_network_status(namespace)
 
 
 @app.command()
 def rbac(
-    namespace: str = typer.Option(
+    namespace: Optional[str] = typer.Option(
         None, "--namespace", "-n", help="Filter by a specific namespace."
+    ),
+    context: Optional[str] = typer.Option(
+        None, "--context", "-c", help="Kubeconfig context to use."
     ),
 ):
     """Scan RBAC for Forbidden events, unbound ServiceAccounts, and role binding summary."""
+    _apply_context(context)
     msg = f" in namespace '{namespace}'" if namespace else ""
     console.print(Panel.fit(f"[bold cyan]Running RBAC Diagnostic{msg}...[/bold cyan]"))
     check_rbac_status(namespace)
@@ -251,7 +493,7 @@ def rbac(
 @app.command()
 def logs(
     name: str = typer.Argument(..., help="Name of the pod, deployment, or resource."),
-    namespace: str = typer.Option(
+    namespace: Optional[str] = typer.Option(
         None, "--namespace", "-n", help="Filter by namespace."
     ),
     previous: bool = typer.Option(
@@ -264,8 +506,12 @@ def logs(
     analyze: bool = typer.Option(
         False, "--analyze", "-a", help="Send logs to AI for root-cause analysis."
     ),
+    context: Optional[str] = typer.Option(
+        None, "--context", "-c", help="Kubeconfig context to use."
+    ),
 ):
     """Fetch and print logs for a specific K8s object (safe wrapper)."""
+    _apply_context(context)
     if analyze:
         buf = io.StringIO()
         with redirect_stdout(buf):
@@ -284,11 +530,15 @@ def describe(
         ..., help="Kind of the resource (e.g., pod, deployment, pvc, node)."
     ),
     name: str = typer.Argument(..., help="Name of the resource."),
-    namespace: str = typer.Option(
+    namespace: Optional[str] = typer.Option(
         None, "--namespace", "-n", help="Filter by namespace."
+    ),
+    context: Optional[str] = typer.Option(
+        None, "--context", "-c", help="Kubeconfig context to use."
     ),
 ):
     """Fetch and gracefully format the describe output of any K8s object (safe wrapper)."""
+    _apply_context(context)
     describe_object(kind, name, namespace)
 
 
@@ -309,7 +559,6 @@ def interactive():
 
     while True:
         try:
-            # session.prompt returns the string entered by the user
             text = session.prompt(HTML("<cyan><b>kubebox> </b></cyan>"))
 
             if not text:
@@ -329,7 +578,6 @@ def interactive():
             app(shlex.split(cleaned_text))
 
         except SystemExit:
-            # Prevent the tool from closing after a subcommand finishes
             continue
         except EOFError:
             break
@@ -340,7 +588,6 @@ def interactive():
 @app.command()
 def dashboard():
     """Launch the TUI Dashboard (Table-style navigation)."""
-    # Import locally to keep the CLI fast for standard commands
     from core.tui import K8sToolApp
 
     ui = K8sToolApp(app)
