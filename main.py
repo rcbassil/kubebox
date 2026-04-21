@@ -1,5 +1,8 @@
+import io
 import os
 import shlex
+from contextlib import redirect_stdout
+
 import typer
 from typer.core import TyperGroup
 from rich.console import Console
@@ -22,6 +25,7 @@ from core.kong import check_kong_errors
 from core.kustomize import check_kustomize_errors
 from core.vault import check_vault_status
 from core.trace import trace_object
+from core.ai import analyze_logs, ask as ai_ask
 from core.crd import check_crd_status
 from core.events import check_events
 from core.network import check_network_status
@@ -69,6 +73,24 @@ def deployments(
         Panel.fit(f"[bold cyan]Running K8s Deployment Diagnostic{msg}...[/bold cyan]")
     )
     check_deployments(namespace)
+
+
+@app.command()
+def ask(
+    question: str = typer.Argument(
+        ..., help="Question to ask about the cluster state."
+    ),
+    namespace: str = typer.Option(
+        None, "--namespace", "-n", help="Focus on a specific namespace."
+    ),
+):
+    """Ask an AI to analyze live cluster diagnostics and answer your question."""
+    console.print(Panel.fit("[bold cyan]Gathering diagnostics...[/bold cyan]"))
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        check_crashloop_pods(namespace)
+        check_events(namespace, event_type="Warning")
+    ai_ask(question, buf.getvalue())
 
 
 @app.command(name="all")
@@ -239,9 +261,21 @@ def logs(
         help="Get logs for a previously terminated container.",
     ),
     tail: int = typer.Option(100, "--tail", "-t", help="Number of lines to tail."),
+    analyze: bool = typer.Option(
+        False, "--analyze", "-a", help="Send logs to AI for root-cause analysis."
+    ),
 ):
     """Fetch and print logs for a specific K8s object (safe wrapper)."""
-    check_logs(name, namespace, previous, tail)
+    if analyze:
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            check_logs(name, namespace, previous, tail)
+        logs_output = buf.getvalue()
+        print(logs_output)
+        resource = name + (f" -n {namespace}" if namespace else "")
+        analyze_logs(logs_output, resource)
+    else:
+        check_logs(name, namespace, previous, tail)
 
 
 @app.command()

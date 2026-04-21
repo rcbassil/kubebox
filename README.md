@@ -1,6 +1,6 @@
 # kubebox
 
-A standalone, read-only Python CLI designed to act as a DevOps/SRE assistant for troubleshooting Kubernetes clusters. It automatically gathers diagnostics, analyzes states, and highlights failures across Kubernetes, FluxCD, Kong, Helm, and HashiCorp Vault without making any modifications to the cluster.
+A standalone, read-only Python CLI designed to act as an AI-powered DevOps/SRE assistant for troubleshooting Kubernetes clusters. It automatically gathers diagnostics, analyzes states, and highlights failures across Kubernetes, FluxCD, Kong, Helm, and HashiCorp Vault — and can stream AI root-cause analysis via Claude — without making any modifications to the cluster.
 
 > **Smart auto-execution:** When a diagnostic tip suggests a `kubectl describe` or `kubectl logs` command, the tool runs it automatically and prints the output inline — no copy-pasting required.
 
@@ -18,6 +18,7 @@ A standalone, read-only Python CLI designed to act as a DevOps/SRE assistant for
 - [uv](https://github.com/astral-sh/uv) (for dependency management)
 - `kubectl` configured and authenticated against your target cluster
 - `helm` CLI (if you intend to use the Helm diagnostics)
+- `ANTHROPIC_API_KEY` environment variable (for the `ask` command and `logs --analyze`)
 
 ## Installation
 
@@ -61,6 +62,15 @@ Checks Nodes (NotReady), PVCs (Unbound), Workloads (Deployments, StatefulSets, D
 ```bash
 kubebox all
 kubebox all -n my-app-namespace
+```
+
+### `ask` — AI Cluster Analysis
+
+Gathers live pod failures and Warning events as context, then streams a plain-English root-cause analysis and recommendations from Claude (`claude-opus-4-7`). Supports `-n` to focus on a specific namespace. Requires `ANTHROPIC_API_KEY`.
+
+```bash
+kubebox ask "why is my app crashlooping?" -n prod
+kubebox ask "are there any scheduling issues?"
 ```
 
 ### `crd` — Custom Resource Definitions
@@ -156,11 +166,12 @@ kubebox kustomize -b ./clusters/my-local-cluster
 
 ### `logs` — Safe Logs Wrapper
 
-Fetches and prints logs for any pod or deployment. Supports tail size and previous-container flags.
+Fetches and prints logs for any pod or deployment. Supports tail size and previous-container flags. Add `--analyze` / `-a` to stream an AI root-cause analysis of the logs (requires `ANTHROPIC_API_KEY`).
 
 ```bash
 kubebox logs my-crashing-pod-123 -n prod
 kubebox logs my-crashing-pod-123 -n prod -t 50 -p
+kubebox logs my-crashing-pod-123 -n prod --analyze
 ```
 
 ### `network` — Network Diagnostic

@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented here.
 
+## [0.8.0] — 2026-04-21
+
+### Added
+- **`ask` command** — gathers live pod and Warning event diagnostics, then streams an AI root-cause analysis from Claude (`claude-opus-4-7`) in response to a plain-English question. Supports `-n` for namespace scoping. Requires `ANTHROPIC_API_KEY`.
+- **`logs --analyze` / `-a` flag** — after fetching logs, sends the output to Claude for root-cause analysis and streams the response inline.
+- **`core/ai.py`** — new module housing the Anthropic SDK integration. System prompt is prompt-cached for efficiency. Streams responses token-by-token. Handles auth, connection, and API errors with clear messages.
+
+### Dependencies
+- Added `anthropic>=0.96.0`.
+
 ## [0.7.0] — 2026-04-20
 
 ### Added
