@@ -424,7 +424,10 @@ class K8sToolApp(App):
                         CommandItem(
                             name,
                             cmd.help
-                            or (cmd.callback.__doc__ or "").strip().splitlines()[0],
+                            or next(
+                                iter((cmd.callback.__doc__ or "").strip().splitlines()),
+                                "",
+                            ),
                             _has_required_args(cmd.callback),
                         )
                         for name, cmd in self._commands.items()

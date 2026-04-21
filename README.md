@@ -12,8 +12,6 @@ A standalone, read-only Python CLI designed to act as an AI-powered DevOps/SRE a
 
 ![kubebox dashboard](doc/kubebox_screenshot.svg)
 
-![kubebox dashboard v2](doc/kubebox_screenshot2.svg)
-
 ## Prerequisites
 
 - Python 3.12+
@@ -26,18 +24,18 @@ A standalone, read-only Python CLI designed to act as an AI-powered DevOps/SRE a
 
 Every command supports these flags:
 
-| Flag | Short | Description |
-|------|-------|-------------|
-| `--context` | `-c` | Target a specific kubeconfig context (e.g. `staging`, `production`). Injected automatically into all `kubectl` and `helm` calls. |
-| `--namespace` | `-n` | Filter results to a specific namespace (where applicable). |
+| Flag          | Short | Description                                                                                                                      |
+| ------------- | ----- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `--context`   | `-c`  | Target a specific kubeconfig context (e.g. `staging`, `production`). Injected automatically into all `kubectl` and `helm` calls. |
+| `--namespace` | `-n`  | Filter results to a specific namespace (where applicable).                                                                       |
 
 `pods`, `deployments`, and `events` additionally support:
 
-| Flag | Short | Description |
-|------|-------|-------------|
-| `--watch` | `-w` | Continuously re-run the diagnostic and refresh the screen. |
-| `--interval` | `-i` | Polling interval in seconds when `--watch` is active (default: `5` for pods/deployments, `10` for events). |
-| `--output` | `-o` | Return raw structured output: `json` or `yaml`. Bypasses Rich display for scripting. |
+| Flag         | Short | Description                                                                                                |
+| ------------ | ----- | ---------------------------------------------------------------------------------------------------------- |
+| `--watch`    | `-w`  | Continuously re-run the diagnostic and refresh the screen.                                                 |
+| `--interval` | `-i`  | Polling interval in seconds when `--watch` is active (default: `5` for pods/deployments, `10` for events). |
+| `--output`   | `-o`  | Return raw structured output: `json` or `yaml`. Bypasses Rich display for scripting.                       |
 
 `helm` and `crd` also support `--output / -o`.
 
@@ -279,11 +277,11 @@ kubebox storageclasses
 
 Runs a full cluster diagnostic and emits a clean Markdown summary to stdout — suitable for CI pipelines, cron jobs, and dropping into team channels. Checks nodes, pods, workloads (Deployments, StatefulSets, DaemonSets), PVCs, services, jobs, and warning events. Produces a summary table and a detailed Issues section when problems are found.
 
-| Flag | Short | Description |
-|------|-------|-------------|
-| `--title` | `-t` | Custom report title. |
-| `--copy` | `-C` | Copy the Markdown report to the clipboard instead of printing. |
-| `--fail-on-issues` | `-f` | Exit with code 1 if any issues are detected (CI gate). |
+| Flag               | Short | Description                                                    |
+| ------------------ | ----- | -------------------------------------------------------------- |
+| `--title`          | `-t`  | Custom report title.                                           |
+| `--copy`           | `-C`  | Copy the Markdown report to the clipboard instead of printing. |
+| `--fail-on-issues` | `-f`  | Exit with code 1 if any issues are detected (CI gate).         |
 
 ```bash
 kubebox report                              # print Markdown to stdout
