@@ -88,6 +88,21 @@ def _inject_namespace(command: str, namespace: str) -> str:
     return command + f" -n {namespace}"
 
 
+def _inject_context_flag(command: str, context: str) -> str:
+    """Append --context <context> when no context flag is already present."""
+    if not context:
+        return command
+    try:
+        parts = shlex.split(command)
+    except ValueError:
+        return command
+    if not parts:
+        return command
+    if "--context" in parts or "-c" in parts:
+        return command
+    return command + f" --context {context}"
+
+
 # ── List item widgets ─────────────────────────────────────────────────────────
 
 
@@ -126,12 +141,37 @@ class K8sToolApp(App):
         Binding("s", "focus_output", "Output"),
         Binding("l", "focus_list", "Commands"),
         Binding("h", "toggle_history", "History"),
+        Binding("c", "focus_context", "Context"),
         Binding("n", "focus_namespace", "Namespace"),
         Binding("r", "rerun_last", "Re-run", show=False),
         Binding("escape", "close_input", "Close"),
     ]
 
     CSS = """
+    /* ── Context bar ──────────────────────────────────── */
+    #ctx-bar {
+        height: 1;
+        background: $boost;
+        padding: 0 1;
+    }
+    #ctx-label {
+        width: auto;
+        padding: 0 1 0 0;
+        color: $accent;
+        text-style: bold;
+    }
+    #ctx-input {
+        width: 1fr;
+        height: 1;
+        background: $boost;
+        color: $text;
+        border: none;
+        padding: 0;
+    }
+    #ctx-input:focus {
+        background: $panel-lighten-1;
+        border: none;
+    }
     /* ── Namespace bar ─────────────────────────────────── */
     #ns-bar {
         height: 1;
@@ -258,6 +298,7 @@ class K8sToolApp(App):
             )
         )
         self._history: deque[_HistoryEntry] = deque(maxlen=_MAX_HISTORY)
+        self._active_context: str = ""
         self._active_namespace: str = ""
         self._last_command: str = ""
         self._showing_history: bool = False
@@ -266,6 +307,13 @@ class K8sToolApp(App):
 
     def compose(self) -> ComposeResult:
         yield Header()
+
+        with Horizontal(id="ctx-bar"):
+            yield Static("Context:", id="ctx-label")
+            yield Input(
+                placeholder="default context   (c to edit, Enter to confirm)",
+                id="ctx-input",
+            )
 
         with Horizontal(id="ns-bar"):
             yield Static("Namespace:", id="ns-label")
@@ -306,13 +354,26 @@ class K8sToolApp(App):
 
     # ── Namespace bar ─────────────────────────────────────────────────────
 
+    def _update_subtitle(self) -> None:
+        parts = []
+        if self._active_context:
+            parts.append(f"ctx: {self._active_context}")
+        if self._active_namespace:
+            parts.append(f"ns: {self._active_namespace}")
+        self.sub_title = "  |  ".join(parts)
+
     def on_input_changed(self, event: Input.Changed) -> None:
-        if event.input.id != "ns-input":
-            return
-        self._active_namespace = event.value.strip()
-        self.sub_title = (
-            f"ns: {self._active_namespace}" if self._active_namespace else ""
-        )
+        if event.input.id == "ctx-input":
+            self._active_context = event.value.strip()
+            self._update_subtitle()
+        elif event.input.id == "ns-input":
+            self._active_namespace = event.value.strip()
+            self._update_subtitle()
+
+    def action_focus_context(self) -> None:
+        ctx = self.query_one("#ctx-input", Input)
+        ctx.focus()
+        ctx.cursor_position = len(ctx.value)
 
     def action_focus_namespace(self) -> None:
         ns = self.query_one("#ns-input", Input)
@@ -331,6 +392,8 @@ class K8sToolApp(App):
         bar = self.query_one("#input-bar")
         if "active" in bar.classes:
             bar.remove_class("active")
+            self.query_one("#command-list").focus()
+        elif self.query_one("#ctx-input", Input).has_focus:
             self.query_one("#command-list").focus()
         elif self.query_one("#ns-input", Input).has_focus:
             self.query_one("#command-list").focus()
@@ -391,7 +454,7 @@ class K8sToolApp(App):
             self._run_raw(command_name)
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
-        if event.input.id == "ns-input":
+        if event.input.id in ("ctx-input", "ns-input"):
             self.query_one("#command-list").focus()
             return
 
@@ -439,17 +502,23 @@ class K8sToolApp(App):
     # ── Command execution ─────────────────────────────────────────────────
 
     def _run_raw(self, raw: str, *, skip_namespace_inject: bool = False) -> None:
-        effective = (
-            raw
-            if skip_namespace_inject
-            else _inject_namespace(raw, self._active_namespace)
-        )
+        if skip_namespace_inject:
+            effective = raw
+        else:
+            effective = _inject_namespace(raw, self._active_namespace)
+            effective = _inject_context_flag(effective, self._active_context)
         out = self.query_one("#output-area", RichLog)
         out.clear()
         if effective != raw:
+            injected = []
+            if self._active_context and "--context" not in raw.split():
+                injected.append(f"ctx: {self._active_context}")
+            if self._active_namespace and "-n" not in raw.split():
+                injected.append(f"ns: {self._active_namespace}")
+            hint = "  ".join(injected)
             header = (
                 f"[bold yellow]Running [cyan]{raw}[/cyan]"
-                f" [dim](+ns: {self._active_namespace})[/dim]...[/bold yellow]"
+                f" [dim](+{hint})[/dim]...[/bold yellow]"
             )
         else:
             header = f"[bold yellow]Running [cyan]{effective}[/cyan]...[/bold yellow]"
