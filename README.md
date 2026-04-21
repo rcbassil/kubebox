@@ -115,11 +115,15 @@ kubebox crd -o json | jq '.items[].metadata.name'
 
 Launches a full-screen terminal UI with a command list on the left and scrollable output on the right. Select a command with the keyboard to run it; commands that require arguments open an inline input bar pre-filled with a usage hint. A **"run any command…"** entry at the bottom of the list opens an empty input bar where any kubebox command (with arguments) can be typed freely — non-kubebox input is rejected with an error.
 
+**Namespace selector** — a one-line bar at the top of the dashboard holds the active namespace. Press `n` to edit it and `Enter` to confirm. The namespace is automatically injected into every command run from the dashboard (as `-n <ns>`), so you never have to type it repeatedly. The current value is shown in the app subtitle.
+
+**Command history** — press `h` to toggle a history panel below the command list. It shows the last 20 commands with their timestamps. Selecting an entry instantly restores its captured output without re-running the command. Press `r` at any time to re-run whichever command is currently displayed.
+
 ```bash
 kubebox dashboard
 ```
 
-Keybindings: `s` focus output · `l` focus list · `Esc` cancel input · `q` quit.
+Keybindings: `s` focus output · `l` focus list · `h` toggle history · `n` edit namespace · `r` re-run · `Esc` cancel · `q` quit.
 
 ### `deployments` — Deployment Health
 

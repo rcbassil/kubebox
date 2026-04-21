@@ -2,6 +2,15 @@
 
 All notable changes to this project are documented here.
 
+## [0.10.0] — 2026-04-21
+
+### Added
+- **Dashboard namespace selector** — a persistent one-line bar at the top of the dashboard shows the active namespace. Press `n` to edit it, `Enter` to confirm. The active namespace is automatically appended as `-n <ns>` to every command run from the dashboard (skipped if the command already includes `-n`, or is `contexts`, `flux`, or `kong`). The current namespace is reflected in the app subtitle.
+- **Dashboard command history** — press `h` to toggle a history panel below the command list, showing the last 20 commands with timestamps. Click any entry to instantly restore its captured output in the output pane (no re-run). Press `r` at any time to re-run whichever command is currently displayed (live or from history).
+
+### Changed
+- Dashboard keybindings updated: `h` toggles history panel · `n` focuses namespace input · `r` re-runs last command.
+
 ## [0.9.0] — 2026-04-21
 
 ### Added
