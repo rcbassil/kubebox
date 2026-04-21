@@ -35,8 +35,11 @@ uv run main.py --help
 Package the toolbox into a single binary using [PyInstaller](https://pyinstaller.org/):
 
 ```bash
+# Install PyInstaller (once)
+uv add --dev pyinstaller
+
 # Build
-uv run pyinstaller kubebox.spec
+uv run pyinstaller --onefile --name kubebox main.py
 
 # Run or install globally
 ./dist/kubebox --help
