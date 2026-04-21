@@ -103,6 +103,15 @@ kubebox ask "are there any scheduling issues?"
 kubebox ask "what's wrong?" --context staging -n payments
 ```
 
+### `configmaps` — ConfigMap Listing
+
+Lists all ConfigMaps with their key counts. System namespaces (`kube-system`, `kube-public`, `kube-node-lease`) are excluded when no namespace filter is set.
+
+```bash
+kubebox configmaps
+kubebox configmaps -n my-namespace
+```
+
 ### `crd` — Custom Resource Definitions
 
 Discovers all CRDs in the cluster, fetches their instances, and surfaces any with unhealthy conditions. All conditions on every instance are inspected — any condition with `status=False` or `status=Unknown` is flagged, regardless of condition type. Shows a summary table grouped by CRD and namespace, then a detailed failing-instances table listing the unhealthy condition names and their statuses.
@@ -249,6 +258,23 @@ kubebox rbac
 kubebox rbac -n prod
 ```
 
+### `secrets` — Secret Listing
+
+Lists all Secrets by name and type only — values are **never** shown. System namespaces are excluded when scanning cluster-wide.
+
+```bash
+kubebox secrets
+kubebox secrets -n my-namespace
+```
+
+### `storageclasses` — StorageClass Listing
+
+Lists all StorageClasses in the cluster with their provisioner, reclaim policy, volume binding mode, and whether each is the cluster default. Cluster-scoped — no namespace flag.
+
+```bash
+kubebox storageclasses
+```
+
 ### `report` — Markdown Health Report
 
 Runs a full cluster diagnostic and emits a clean Markdown summary to stdout — suitable for CI pipelines, cron jobs, and dropping into team channels. Checks nodes, pods, workloads (Deployments, StatefulSets, DaemonSets), PVCs, services, jobs, and warning events. Produces a summary table and a detailed Issues section when problems are found.
@@ -291,6 +317,15 @@ kubebox trace deployment my-app -n prod
 kubebox trace ingress my-ingress -n prod
 kubebox trace pvc my-claim -n prod
 kubebox trace pod my-crashing-pod-xyz -n prod
+```
+
+### `volumes` — PersistentVolumes & PVCs
+
+Shows PersistentVolumes (cluster-wide) and PersistentVolumeClaims in a single view. Surfaces PVs in non-Bound/Available states and unbound PVCs. Use `-n` to filter PVCs to a specific namespace. Shown as **pv & pvc** in the TUI dashboard list.
+
+```bash
+kubebox volumes
+kubebox volumes -n my-namespace
 ```
 
 ### `vault` — HashiCorp Vault
