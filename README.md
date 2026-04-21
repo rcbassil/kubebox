@@ -55,8 +55,8 @@ Commands are listed in alphabetical order. Use `-h` or `--help` on any command f
 Checks Nodes (NotReady), PVCs (Unbound), Workloads (Deployments, StatefulSets, DaemonSets), Services, Ingresses, Jobs, CronJobs, HPAs, PersistentVolumes, Namespaces, ConfigMaps, and Secrets. Finishes with a cluster-wide Warning events table and up to 5 targeted command suggestions based on event reasons (`BackOff`, `OOMKilling`, `FailedScheduling`, `FailedMount`, `Unhealthy`, `Evicted`, `NodeNotReady`, etc.).
 
 ```bash
-uv run main.py all
-uv run main.py all -n my-app-namespace
+kubebox all
+kubebox all -n my-app-namespace
 ```
 
 ### `crd` — Custom Resource Definitions
@@ -64,8 +64,8 @@ uv run main.py all -n my-app-namespace
 Discovers all CRDs in the cluster, fetches their instances, and surfaces any with non-ready conditions (`Ready`, `Available`, `Synced`, or `Healthy` = `False`). Shows a summary table grouped by CRD and namespace, then a detailed failing-instances table with condition messages.
 
 ```bash
-uv run main.py crd
-uv run main.py crd -n my-namespace
+kubebox crd
+kubebox crd -n my-namespace
 ```
 
 ### `dashboard` — TUI Dashboard
@@ -73,7 +73,7 @@ uv run main.py crd -n my-namespace
 Launches a full-screen terminal UI with a command list on the left and scrollable output on the right. Select a command with the keyboard to run it; commands that require arguments open an inline input bar pre-filled with a usage hint.
 
 ```bash
-uv run main.py dashboard
+kubebox dashboard
 ```
 
 Keybindings: `s` focus output · `l` focus list · `Esc` cancel input · `q` quit.
@@ -83,8 +83,8 @@ Keybindings: `s` focus output · `l` focus list · `Esc` cancel input · `q` qui
 Fetches and syntax-highlights the describe output of any Kubernetes object.
 
 ```bash
-uv run main.py describe deployment frontend -n prod
-uv run main.py describe node my-node
+kubebox describe deployment frontend -n prod
+kubebox describe node my-node
 ```
 
 ### `events` — Kubernetes Events Browser
@@ -92,10 +92,10 @@ uv run main.py describe node my-node
 Fetches cluster events and supports filtering by namespace, type (`Warning` / `Normal`), reason, or age.
 
 ```bash
-uv run main.py events
-uv run main.py events -n prod
-uv run main.py events --type Warning --since 30m
-uv run main.py events --reason BackOff
+kubebox events
+kubebox events -n prod
+kubebox events --type Warning --since 30m
+kubebox events --reason BackOff
 ```
 
 ### `flux` — FluxCD Synchronization
@@ -103,7 +103,7 @@ uv run main.py events --reason BackOff
 Scans `GitRepository`, `Kustomization`, and `HelmRelease` objects for `Ready=False` status. Lists all Flux resources with their Ready state after each check.
 
 ```bash
-uv run main.py flux
+kubebox flux
 ```
 
 ### `helm` — Helm Releases
@@ -111,16 +111,16 @@ uv run main.py flux
 Finds releases not in `deployed` state (e.g. `failed`, `pending-install`, `pending-upgrade`). Prints a full listing of all releases with status, chart, and app version.
 
 ```bash
-uv run main.py helm
-uv run main.py helm -n ingress-nginx
+kubebox helm
+kubebox helm -n ingress-nginx
 ```
 
 ### `interactive` — Interactive Shell
 
-Launches an interactive shell with tab-completion and command history (`~/.k8s_tool_history`). Run any kubebox command without the `uv run main.py` prefix.
+Launches an interactive shell with tab-completion and command history (`~/.k8s_tool_history`). Run any kubebox command without the `kubebox` prefix.
 
 ```bash
-uv run main.py interactive
+kubebox interactive
 ```
 
 ### `kong` — Kong Ingress Controller
@@ -128,7 +128,7 @@ uv run main.py interactive
 Scans Kong proxy pod logs for `[error]` and `level=error` entries. Lists all Kong pods with their phase and readiness.
 
 ```bash
-uv run main.py kong
+kubebox kong
 ```
 
 ### `kustomize` — Kustomize Controller
@@ -136,9 +136,9 @@ uv run main.py kong
 Parses `kustomize-controller` logs for `level=error` entries to surface GitOps sync failures. Optionally runs a local `kustomize build` dry-run. Lists all controller pods at the end.
 
 ```bash
-uv run main.py kustomize
-uv run main.py kustomize -n custom-flux-system
-uv run main.py kustomize -b ./clusters/my-local-cluster
+kubebox kustomize
+kubebox kustomize -n custom-flux-system
+kubebox kustomize -b ./clusters/my-local-cluster
 ```
 
 ### `logs` — Safe Logs Wrapper
@@ -146,8 +146,8 @@ uv run main.py kustomize -b ./clusters/my-local-cluster
 Fetches and prints logs for any pod or deployment. Supports tail size and previous-container flags.
 
 ```bash
-uv run main.py logs my-crashing-pod-123 -n prod
-uv run main.py logs my-crashing-pod-123 -n prod -t 50 -p
+kubebox logs my-crashing-pod-123 -n prod
+kubebox logs my-crashing-pod-123 -n prod -t 50 -p
 ```
 
 ### `network` — Network Diagnostic
@@ -155,8 +155,8 @@ uv run main.py logs my-crashing-pod-123 -n prod -t 50 -p
 Checks CoreDNS health, services with no ready endpoints, and NetworkPolicy coverage across the cluster.
 
 ```bash
-uv run main.py network
-uv run main.py network -n prod
+kubebox network
+kubebox network -n prod
 ```
 
 ### `pods` — Scan for Pod Failures
@@ -164,8 +164,8 @@ uv run main.py network -n prod
 Scans all namespaces for pods in `CrashLoopBackOff`, `ImagePullBackOff`, `Pending`, or `Error` states, then prints a full listing of every pod with its status.
 
 ```bash
-uv run main.py pods
-uv run main.py pods -n my-app-namespace
+kubebox pods
+kubebox pods -n my-app-namespace
 ```
 
 ### `rbac` — RBAC Diagnostic
@@ -173,8 +173,8 @@ uv run main.py pods -n my-app-namespace
 Scans for Forbidden/Unauthorized events, lists ServiceAccounts with no role bindings (potential sources of RBAC errors), and prints a full role binding summary.
 
 ```bash
-uv run main.py rbac
-uv run main.py rbac -n prod
+kubebox rbac
+kubebox rbac -n prod
 ```
 
 ### `trace` — Object Dependency Tree
@@ -196,10 +196,10 @@ Supported kinds: `pod`, `deployment`, `statefulset`, `daemonset`, `service` / `s
 ```
 
 ```bash
-uv run main.py trace deployment my-app -n prod
-uv run main.py trace ingress my-ingress -n prod
-uv run main.py trace pvc my-claim -n prod
-uv run main.py trace pod my-crashing-pod-xyz -n prod
+kubebox trace deployment my-app -n prod
+kubebox trace ingress my-ingress -n prod
+kubebox trace pvc my-claim -n prod
+kubebox trace pod my-crashing-pod-xyz -n prod
 ```
 
 ### `vault` — HashiCorp Vault
@@ -207,6 +207,6 @@ uv run main.py trace pod my-crashing-pod-xyz -n prod
 Locates Vault **server** pods automatically by label (`app.kubernetes.io/name=vault` or `app=vault`), excluding injector sidecars. Checks pod readiness, StatefulSet replica health, and warning events (with **Last Seen** ages). If Vault is **sealed**, detects it via `vault status`, shows current unseal progress, and prints step-by-step unseal instructions listing only the other sealed replicas for HA deployments.
 
 ```bash
-uv run main.py vault
-uv run main.py vault -n vault-system
+kubebox vault
+kubebox vault -n vault-system
 ```
