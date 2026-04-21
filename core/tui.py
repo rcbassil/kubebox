@@ -2,8 +2,6 @@ import inspect
 import io
 import re
 import shlex
-import subprocess
-import sys
 from collections import deque
 from contextlib import redirect_stdout
 from datetime import datetime
@@ -23,6 +21,8 @@ from textual.widgets import (
     Static,
 )
 from textual.containers import Horizontal, Vertical
+
+from core.utils import copy_to_clipboard
 
 
 _RUN_SENTINEL = "__run__"
@@ -142,25 +142,6 @@ def _extract_commands(text: str) -> list[str]:
     return commands[:9]
 
 
-def _copy_to_clipboard(text: str) -> None:
-    if sys.platform == "darwin":
-        subprocess.run(["pbcopy"], input=text, text=True, check=True)
-    elif sys.platform == "win32":
-        subprocess.run(["clip"], input=text, text=True, check=True)
-    else:
-        try:
-            subprocess.run(
-                ["xclip", "-selection", "clipboard"],
-                input=text,
-                text=True,
-                check=True,
-            )
-        except FileNotFoundError:
-            subprocess.run(
-                ["xsel", "--clipboard", "--input"], input=text, text=True, check=True
-            )
-
-
 # ── List item widgets ─────────────────────────────────────────────────────────
 
 
@@ -213,6 +194,7 @@ class K8sToolApp(App):
         Binding("c", "focus_context", "Context"),
         Binding("n", "focus_namespace", "Namespace"),
         Binding("p", "focus_remediation", "Fixes", show=False),
+        Binding("y", "copy_output", "Copy output"),
         Binding("r", "rerun_last", "Re-run", show=False),
         Binding("escape", "close_input", "Close"),
     ]
@@ -399,6 +381,7 @@ class K8sToolApp(App):
         self._active_context: str = ""
         self._active_namespace: str = ""
         self._last_command: str = ""
+        self._last_raw_output: str = ""
         self._showing_history: bool = False
 
     # ── Layout ────────────────────────────────────────────────────────────
@@ -497,6 +480,12 @@ class K8sToolApp(App):
         section = self.query_one("#remediation-section")
         if "visible" in section.classes:
             self.query_one("#remediation-list").focus()
+
+    def action_copy_output(self) -> None:
+        if not self._last_raw_output:
+            self.notify("No output to copy.", severity="warning")
+            return
+        self._do_copy(self._last_raw_output)
 
     def action_close_input(self) -> None:
         bar = self.query_one("#input-bar")
@@ -600,13 +589,16 @@ class K8sToolApp(App):
 
     def _do_copy(self, text: str) -> None:
         try:
-            _copy_to_clipboard(text)
+            copy_to_clipboard(text)
             short = text if len(text) <= 60 else text[:57] + "…"
             self.notify(f"Copied: {short}", title="✓ Clipboard")
         except Exception as e:
             self.notify(str(e), title="Copy failed", severity="error")
 
     # ── Remediation panel ─────────────────────────────────────────────────
+
+    def _store_raw_output(self, text: str) -> None:
+        self._last_raw_output = text
 
     def _update_remediation(self, commands: list[str]) -> None:
         section = self.query_one("#remediation-section")
@@ -695,6 +687,7 @@ class K8sToolApp(App):
         self.call_from_thread(out.write, result)
         self.call_from_thread(out.focus)
         self.call_from_thread(self._add_to_history, raw, result)
+        self.call_from_thread(self._store_raw_output, raw_text)
 
         cmd_parts = shlex.split(raw)
         if cmd_parts and cmd_parts[0] == "ask":
@@ -702,3 +695,10 @@ class K8sToolApp(App):
             self.call_from_thread(self._update_remediation, cmds)
         else:
             self.call_from_thread(self._clear_remediation)
+        if cmd_parts and cmd_parts[0] == "report":
+            self.call_from_thread(
+                lambda: self.notify(
+                    "Press y to copy the Markdown report to clipboard.",
+                    title="✦ Report ready",
+                )
+            )

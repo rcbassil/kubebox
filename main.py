@@ -34,6 +34,8 @@ from core.crd import check_crd_status
 from core.events import check_events
 from core.network import check_network_status
 from core.rbac import check_rbac_status
+from core.report import generate_report
+from core.utils import copy_to_clipboard
 
 
 class _SortedGroup(TyperGroup):
@@ -472,6 +474,50 @@ def network(
     _apply_context(context)
     console.print(Panel.fit("[bold cyan]Running Network Diagnostic...[/bold cyan]"))
     check_network_status(namespace)
+
+
+@app.command()
+def report(
+    namespace: Optional[str] = typer.Option(
+        None, "--namespace", "-n", help="Scope report to a specific namespace."
+    ),
+    title: Optional[str] = typer.Option(
+        None, "--title", "-t", help="Custom report title."
+    ),
+    fail_on_issues: bool = typer.Option(
+        False,
+        "--fail-on-issues",
+        "-f",
+        help="Exit with code 1 if any issues are found (for CI pipelines).",
+    ),
+    copy: bool = typer.Option(
+        False,
+        "--copy",
+        "-C",
+        help="Copy the Markdown report to the clipboard instead of printing it.",
+    ),
+    context: Optional[str] = typer.Option(
+        None, "--context", "-c", help="Kubeconfig context to use."
+    ),
+):
+    """Generate a Markdown cluster health report for CI or scheduled digests."""
+    _apply_context(context)
+    try:
+        md, has_issues = generate_report(namespace=namespace, title=title)
+    except Exception as e:
+        console.print(f"[bold red]Report failed:[/bold red] {e}")
+        raise typer.Exit(code=1)
+    if copy:
+        try:
+            copy_to_clipboard(md)
+            console.print("[green]✓ Report copied to clipboard.[/green]")
+        except Exception as e:
+            console.print(f"[bold red]Clipboard error:[/bold red] {e}")
+            raise typer.Exit(code=1)
+    else:
+        print(md)
+    if fail_on_issues and has_issues:
+        raise typer.Exit(code=1)
 
 
 @app.command()

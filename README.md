@@ -123,11 +123,15 @@ Launches a full-screen terminal UI with a command list on the left and scrollabl
 
 **Command history** — press `h` to toggle a history panel below the command list. It shows the last 20 commands with their timestamps. Selecting an entry instantly restores its captured output without re-running the command. Press `r` at any time to re-run whichever command is currently displayed.
 
+**AI remediation panel** — after running `ask Claude`, any `kubectl`/`helm`/`kubebox` commands found in Claude's response appear in a green-bordered panel below the output. Select an entry and press `Enter` to copy it to the clipboard. Press `p` to focus the panel from the keyboard.
+
+**Copy output** — press `y` at any time to copy the current output pane to the clipboard. After running `report` from the dashboard a toast reminds you to press `y` to grab the Markdown.
+
 ```bash
 kubebox dashboard
 ```
 
-Keybindings: `s` focus output · `l` focus list · `h` toggle history · `c` edit context · `n` edit namespace · `r` re-run · `Esc` cancel · `q` quit.
+Keybindings: `s` focus output · `l` focus list · `h` toggle history · `c` edit context · `n` edit namespace · `y` copy output · `p` focus fixes · `r` re-run · `Esc` cancel · `q` quit.
 
 ### `deployments` — Deployment Health
 
@@ -243,6 +247,25 @@ Scans for Forbidden/Unauthorized events, lists ServiceAccounts with no role bind
 ```bash
 kubebox rbac
 kubebox rbac -n prod
+```
+
+### `report` — Markdown Health Report
+
+Runs a full cluster diagnostic and emits a clean Markdown summary to stdout — suitable for CI pipelines, cron jobs, and dropping into team channels. Checks nodes, pods, workloads (Deployments, StatefulSets, DaemonSets), PVCs, services, jobs, and warning events. Produces a summary table and a detailed Issues section when problems are found.
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--title` | `-t` | Custom report title. |
+| `--copy` | `-C` | Copy the Markdown report to the clipboard instead of printing. |
+| `--fail-on-issues` | `-f` | Exit with code 1 if any issues are detected (CI gate). |
+
+```bash
+kubebox report                              # print Markdown to stdout
+kubebox report --copy                       # copy to clipboard
+kubebox report -n prod --title "Daily"      # namespace-scoped with custom title
+kubebox report --fail-on-issues             # CI: fail if issues found
+kubebox report > report.md                  # save to file
+kubebox report | pbpaste                    # pipe anywhere
 ```
 
 ### `trace` — Object Dependency Tree

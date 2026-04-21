@@ -1,9 +1,10 @@
 import json
 import shlex
 import subprocess
-from datetime import datetime, timezone
-from rich.console import Console
 import sys
+from datetime import datetime, timezone
+
+from rich.console import Console
 
 console = Console()
 
@@ -37,6 +38,29 @@ def _inject_context(cmd: list[str]) -> list[str]:
     if cmd and cmd[0] == "helm" and "--kube-context" not in cmd:
         return [cmd[0], "--kube-context", _current_context] + cmd[1:]
     return cmd
+
+
+def copy_to_clipboard(text: str) -> None:
+    """Copy text to the system clipboard (macOS, Linux, Windows)."""
+    if sys.platform == "darwin":
+        subprocess.run(["pbcopy"], input=text, text=True, check=True)
+    elif sys.platform == "win32":
+        subprocess.run(["clip"], input=text, text=True, check=True)
+    else:
+        try:
+            subprocess.run(
+                ["xclip", "-selection", "clipboard"],
+                input=text,
+                text=True,
+                check=True,
+            )
+        except FileNotFoundError:
+            subprocess.run(
+                ["xsel", "--clipboard", "--input"],
+                input=text,
+                text=True,
+                check=True,
+            )
 
 
 def _check_mutative(cmd: list[str]):

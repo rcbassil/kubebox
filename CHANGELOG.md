@@ -2,6 +2,22 @@
 
 All notable changes to this project are documented here.
 
+## [0.13.0] — 2026-04-21
+
+### Added
+- **`report` command** — runs a full cluster diagnostic and emits a clean Markdown summary to stdout, designed for CI pipelines and scheduled digests. Checks nodes, pods, workloads, PVCs, services, jobs, and warning events. Produces a summary table and an Issues section when problems are found.
+  - `--copy / -C` — copies the Markdown report to the clipboard instead of printing it.
+  - `--fail-on-issues / -f` — exits with code 1 if any issues are found (CI gate).
+  - `--title / -t` — set a custom report title.
+- **Dashboard `y` keybinding** — copies the current output pane to the clipboard at any time. After running `report` from the dashboard a toast prompts to press `y`.
+
+## [0.12.0] — 2026-04-21
+
+### Added
+- **Dashboard AI remediation panel** — after an `ask Claude` command completes, `kubectl`/`helm`/`kubebox` commands found in Claude's response are extracted and shown in a green-bordered panel below the output area. Select any entry and press `Enter` to copy it to the clipboard. A toast notification confirms the copy.
+- **`p` keybinding** — focuses the remediation panel from the keyboard.
+- The panel clears automatically when any non-`ask` command runs.
+
 ## [0.11.0] — 2026-04-21
 
 ### Added
