@@ -22,6 +22,10 @@ from core.kubernetes import (
     describe_object,
     check_logs,
     get_failing_pods,
+    check_secrets,
+    check_configmaps,
+    check_storageclasses,
+    check_volumes,
 )
 from core.flux import check_flux_status
 from core.helm import check_helm_status
@@ -95,6 +99,22 @@ def _watch_loop(interval: int, fn, *args, **kwargs) -> None:
             time.sleep(interval)
     except KeyboardInterrupt:
         console.print("\n[dim]Watch stopped.[/dim]")
+
+
+@app.command()
+def configmaps(
+    namespace: Optional[str] = typer.Option(
+        None, "--namespace", "-n", help="Filter by a specific namespace."
+    ),
+    context: Optional[str] = typer.Option(
+        None, "--context", "-c", help="Kubeconfig context to use."
+    ),
+):
+    """List all ConfigMaps with key counts (system namespaces excluded)."""
+    _apply_context(context)
+    msg = f" in namespace '{namespace}'" if namespace else ""
+    console.print(Panel.fit(f"[bold cyan]Listing ConfigMaps{msg}...[/bold cyan]"))
+    check_configmaps(namespace)
 
 
 @app.command(name="contexts")
@@ -537,6 +557,34 @@ def rbac(
 
 
 @app.command()
+def secrets(
+    namespace: Optional[str] = typer.Option(
+        None, "--namespace", "-n", help="Filter by a specific namespace."
+    ),
+    context: Optional[str] = typer.Option(
+        None, "--context", "-c", help="Kubeconfig context to use."
+    ),
+):
+    """List all Secrets (names and types only — values are never shown)."""
+    _apply_context(context)
+    msg = f" in namespace '{namespace}'" if namespace else ""
+    console.print(Panel.fit(f"[bold cyan]Listing Secrets{msg}...[/bold cyan]"))
+    check_secrets(namespace)
+
+
+@app.command()
+def storageclasses(
+    context: Optional[str] = typer.Option(
+        None, "--context", "-c", help="Kubeconfig context to use."
+    ),
+):
+    """List all StorageClasses with provisioner, reclaim policy, and binding mode."""
+    _apply_context(context)
+    console.print(Panel.fit("[bold cyan]Listing StorageClasses...[/bold cyan]"))
+    check_storageclasses()
+
+
+@app.command()
 def logs(
     name: str = typer.Argument(..., help="Name of the pod, deployment, or resource."),
     namespace: Optional[str] = typer.Option(
@@ -586,6 +634,24 @@ def describe(
     """Fetch and gracefully format the describe output of any K8s object (safe wrapper)."""
     _apply_context(context)
     describe_object(kind, name, namespace)
+
+
+@app.command()
+def volumes(
+    namespace: Optional[str] = typer.Option(
+        None, "--namespace", "-n", help="Filter PVCs by a specific namespace."
+    ),
+    context: Optional[str] = typer.Option(
+        None, "--context", "-c", help="Kubeconfig context to use."
+    ),
+):
+    """List PersistentVolumes (cluster-wide) and PersistentVolumeClaims."""
+    _apply_context(context)
+    msg = f" (PVCs in namespace '{namespace}')" if namespace else ""
+    console.print(
+        Panel.fit(f"[bold cyan]Listing PersistentVolumes & PVCs{msg}...[/bold cyan]")
+    )
+    check_volumes(namespace)
 
 
 @app.command()

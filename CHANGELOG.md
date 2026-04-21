@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented here.
 
+## [0.15.0] — 2026-04-21
+
+### Added
+- **`configmaps` command** — lists all ConfigMaps with key counts; system namespaces excluded when no namespace filter is set.
+- **`secrets` command** — lists all Secrets by name and type only; values are never shown. System namespaces excluded cluster-wide.
+- **`storageclasses` command** — lists all StorageClasses with provisioner, reclaim policy, volume binding mode, and default marker. Cluster-scoped (no namespace flag).
+- **`volumes` command** — combines PersistentVolumes (cluster-wide) and PersistentVolumeClaims (filterable by `-n`) in a single view. Surfaces non-Bound/Available PVs and unbound PVCs. Shown as **pv & pvc** in the TUI dashboard list.
+
 ## [0.14.0] — 2026-04-21
 
 ### Fixed

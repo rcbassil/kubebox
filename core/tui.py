@@ -27,10 +27,10 @@ from core.utils import copy_to_clipboard
 
 _RUN_SENTINEL = "__run__"
 _MAX_HISTORY = 20
-_DISPLAY_NAMES = {"ask": "ask Claude"}
+_DISPLAY_NAMES = {"ask": "ask Claude", "volumes": "pv & pvc"}
 
 # Commands that never accept --namespace
-_NO_NS_CMDS = frozenset({"contexts", "flux", "kong"})
+_NO_NS_CMDS = frozenset({"contexts", "flux", "kong", "storageclasses"})
 
 # Prefixes treated as actionable commands in AI output
 _CMD_PREFIXES = ("kubectl", "helm", "kubebox", "vault")

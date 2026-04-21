@@ -1015,6 +1015,77 @@ def check_deployments(namespace: str = None):
     console.print(all_table)
 
 
+def check_secrets(namespace: str = None):
+    """List all Secrets (names and types only — values never shown)."""
+    if not init_k8s():
+        return
+    v1 = client.CoreV1Api()
+    msg = f" in namespace '{namespace}'" if namespace else ""
+    console.print(
+        f"[bold blue]Checking Secrets{msg} (names and types only — values never shown)...[/bold blue]"
+    )
+    _check_secrets(v1, namespace)
+
+
+def check_configmaps(namespace: str = None):
+    """List all ConfigMaps with key counts."""
+    if not init_k8s():
+        return
+    v1 = client.CoreV1Api()
+    msg = f" in namespace '{namespace}'" if namespace else ""
+    console.print(f"[bold blue]Checking ConfigMaps{msg}...[/bold blue]")
+    _check_configmaps(v1, namespace)
+
+
+def check_storageclasses():
+    """List all StorageClasses with provisioner, reclaim policy, and binding mode."""
+    if not init_k8s():
+        return
+    console.print("[bold blue]Checking StorageClasses...[/bold blue]")
+    try:
+        storage_v1 = client.StorageV1Api()
+        scs = storage_v1.list_storage_class().items
+        if not scs:
+            console.print("[dim]No StorageClasses found.[/dim]")
+            return
+        table = Table(
+            title="StorageClasses", show_header=True, header_style="bold magenta"
+        )
+        table.add_column("Name", style="blue")
+        table.add_column("Provisioner", style="cyan")
+        table.add_column("Reclaim Policy", style="dim")
+        table.add_column("Binding Mode", style="yellow")
+        table.add_column("Default", justify="center")
+        for sc in scs:
+            annotations = sc.metadata.annotations or {}
+            is_default = (
+                annotations.get(
+                    "storageclass.kubernetes.io/is-default-class", "false"
+                ).lower()
+                == "true"
+            )
+            default_marker = "[green]✓[/green]" if is_default else ""
+            table.add_row(
+                f"[bold]{sc.metadata.name}[/bold]" if is_default else sc.metadata.name,
+                sc.provisioner,
+                sc.reclaim_policy or "Delete",
+                sc.volume_binding_mode or "Immediate",
+                default_marker,
+            )
+        console.print(table)
+    except Exception as e:
+        console.print(f"[bold red]Error checking StorageClasses:[/bold red] {e}")
+
+
+def check_volumes(namespace: str = None):
+    """Show PersistentVolumes (cluster-wide) and PersistentVolumeClaims."""
+    if not init_k8s():
+        return
+    v1 = client.CoreV1Api()
+    _check_persistent_volumes(v1)
+    _check_pvcs(v1, namespace)
+
+
 def describe_object(kind: str, name: str, namespace: str = None):
     """Fetch and print the describe output of any k8s object."""
     cmd = ["kubectl", "describe", kind, name]
