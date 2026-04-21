@@ -217,7 +217,7 @@ def ask(
         None, "--context", "-c", help="Kubeconfig context to use."
     ),
 ):
-    """Ask an AI to analyze live cluster diagnostics and answer your question."""
+    """Ask Claude to analyze live cluster diagnostics and answer your question."""
     _apply_context(context)
     console.print(Panel.fit("[bold cyan]Gathering diagnostics...[/bold cyan]"))
 

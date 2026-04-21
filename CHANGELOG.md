@@ -2,6 +2,17 @@
 
 All notable changes to this project are documented here.
 
+## [0.11.0] — 2026-04-21
+
+### Added
+- **Dashboard context selector** — a persistent one-line bar above the namespace bar shows the active kubeconfig context. Press `c` to edit it, `Enter` to confirm. The context is automatically appended as `--context <ctx>` to every command run from the dashboard (skipped if the command already includes `--context` or `-c`). The subtitle shows both active context and namespace when set.
+
+### Changed
+- **Dashboard command panel** — width reduced for a more compact layout.
+- **Dashboard command list** — `ask` entry is labeled **ask Claude** to make the AI nature explicit.
+- **`ask` command description** — updated from "Ask an AI…" to "Ask Claude…" in both CLI help and the dashboard.
+- Dashboard keybindings updated: `c` focuses the context input.
+
 ## [0.10.0] — 2026-04-21
 
 ### Added

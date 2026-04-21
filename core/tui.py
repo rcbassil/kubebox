@@ -24,6 +24,7 @@ from textual.containers import Horizontal, Vertical
 
 _RUN_SENTINEL = "__run__"
 _MAX_HISTORY = 20
+_DISPLAY_NAMES = {"ask": "ask Claude"}
 
 # Commands that never accept --namespace
 _NO_NS_CMDS = frozenset({"contexts", "flux", "kong"})
@@ -117,8 +118,9 @@ class CommandItem(ListItem):
         if self.command_name == _RUN_SENTINEL:
             yield Label("[bold green]▶[/bold green] [dim]run any…[/dim]")
             return
+        display = _DISPLAY_NAMES.get(self.command_name, self.command_name)
         suffix = " [dim yellow]\\[…][/dim yellow]" if self.has_args else ""
-        yield Label(f"[bold cyan]{self.command_name}[/bold cyan]{suffix}")
+        yield Label(f"[bold cyan]{display}[/bold cyan]{suffix}")
 
 
 class HistoryItem(ListItem):
@@ -201,7 +203,7 @@ class K8sToolApp(App):
         height: 1fr;
     }
     #left-panel {
-        width: 26;
+        width: 18;
     }
     /* ── Command list ──────────────────────────────────── */
     #command-list {
