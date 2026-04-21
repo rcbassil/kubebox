@@ -74,13 +74,22 @@ kubebox crd -n my-namespace
 
 ### `dashboard` — TUI Dashboard
 
-Launches a full-screen terminal UI with a command list on the left and scrollable output on the right. Select a command with the keyboard to run it; commands that require arguments open an inline input bar pre-filled with a usage hint.
+Launches a full-screen terminal UI with a command list on the left and scrollable output on the right. Select a command with the keyboard to run it; commands that require arguments open an inline input bar pre-filled with a usage hint. A **"run any command…"** entry at the bottom of the list opens an empty input bar where any kubebox command (with arguments) can be typed freely — non-kubebox input is rejected with an error.
 
 ```bash
 kubebox dashboard
 ```
 
 Keybindings: `s` focus output · `l` focus list · `Esc` cancel input · `q` quit.
+
+### `deployments` — Deployment Health
+
+Scans all namespaces (or a specific namespace) for degraded deployments. Surfaces any with mismatched Ready/Desired replicas in a failing table with a diagnostic tip, then prints a full listing of every deployment with Ready/Desired, Up-to-date, Available, and Age columns.
+
+```bash
+kubebox deployments
+kubebox deployments -n my-app-namespace
+```
 
 ### `describe` — Safe Describe Wrapper
 

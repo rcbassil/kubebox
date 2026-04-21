@@ -907,6 +907,80 @@ def _check_namespaces(v1):
         console.print(f"[bold red]Error checking Namespaces:[/bold red] {e}")
 
 
+def check_deployments(namespace: str = None):
+    """Scan all namespaces (or a specific namespace) for deployments and surface any that are degraded."""
+    if not init_k8s():
+        return
+
+    apps_v1 = client.AppsV1Api()
+    msg = f" in namespace '{namespace}'" if namespace else ""
+    console.print(f"[bold blue]Checking Kubernetes Deployments{msg}...[/bold blue]")
+    try:
+        deps = (
+            apps_v1.list_namespaced_deployment(namespace).items
+            if namespace
+            else apps_v1.list_deployment_for_all_namespaces().items
+        )
+    except Exception as e:
+        console.print(f"[bold red]Error calling Kubernetes API:[/bold red] {e}")
+        return
+
+    degraded = [
+        d
+        for d in deps
+        if d.spec.replicas and (d.status.ready_replicas or 0) != d.spec.replicas
+    ]
+
+    if degraded:
+        fail_table = Table(
+            title="Degraded Deployments", show_header=True, header_style="bold magenta"
+        )
+        fail_table.add_column("Namespace", style="cyan", width=20)
+        fail_table.add_column("Name", style="blue")
+        fail_table.add_column("Ready/Desired", style="red")
+        for d in degraded:
+            fail_table.add_row(
+                d.metadata.namespace,
+                d.metadata.name,
+                f"{d.status.ready_replicas or 0}/{d.spec.replicas}",
+            )
+        console.print(fail_table)
+        first = degraded[0]
+        print_tip(
+            "Deployments missing replicas often suffer from image pull errors, insufficient node capacity, or failing readiness probes.",
+            f"kubectl describe deployment {first.metadata.name} -n {first.metadata.namespace}",
+        )
+    else:
+        console.print("[green]✓ All Deployments have desired replicas ready![/green]")
+
+    console.print("\n[bold blue]All Deployments:[/bold blue]")
+    all_table = Table(show_header=True, header_style="bold magenta")
+    all_table.add_column("Namespace", style="cyan", width=20)
+    all_table.add_column("Name", style="blue")
+    all_table.add_column("Ready/Desired")
+    all_table.add_column("Up-to-date", justify="right", style="dim")
+    all_table.add_column("Available", justify="right", style="dim")
+    all_table.add_column("Age", style="dim")
+    for d in deps:
+        des = d.spec.replicas or 0
+        rdy = d.status.ready_replicas or 0
+        color = "green" if rdy == des else "red"
+        age = fmt_age(
+            d.metadata.creation_timestamp.isoformat()
+            if d.metadata.creation_timestamp
+            else None
+        )
+        all_table.add_row(
+            d.metadata.namespace,
+            d.metadata.name,
+            f"[{color}]{rdy}/{des}[/{color}]",
+            str(d.status.updated_replicas or 0),
+            str(d.status.available_replicas or 0),
+            age,
+        )
+    console.print(all_table)
+
+
 def describe_object(kind: str, name: str, namespace: str = None):
     """Fetch and print the describe output of any k8s object."""
     cmd = ["kubectl", "describe", kind, name]

@@ -19,6 +19,9 @@ from textual.widgets import (
 from textual.containers import Horizontal, Vertical
 
 
+_RUN_SENTINEL = "__run__"
+
+
 def _cmd_name(cmd) -> str:
     return cmd.name or cmd.callback.__name__.replace("_", "-")
 
@@ -56,6 +59,9 @@ class CommandItem(ListItem):
         self.has_args = has_args
 
     def compose(self) -> ComposeResult:
+        if self.command_name == _RUN_SENTINEL:
+            yield Label("[bold green]run[/bold green] [dim]any command…[/dim]")
+            return
         suffix = " [dim yellow]\\[…][/dim yellow]" if self.has_args else ""
         yield Label(f"[bold cyan]{self.command_name}[/bold cyan]{suffix}")
 
@@ -154,14 +160,12 @@ class K8sToolApp(App):
                     )
                     for name, cmd in self._commands.items()
                 ],
+                CommandItem(_RUN_SENTINEL, "Run any kubebox command", True),
                 id="command-list",
             )
             yield RichLog(id="output-area", highlight=True, markup=True)
         with Vertical(id="input-bar"):
-            yield Static(
-                "Edit the command below and press Enter to run  •  Esc to cancel",
-                id="input-label",
-            )
+            yield Static("", id="input-label")
             with Horizontal(id="input-row"):
                 yield Static("▶", id="input-prefix")
                 yield Input(id="cmd-input")
@@ -190,10 +194,21 @@ class K8sToolApp(App):
         self.trigger_command(event.item.command_name)
 
     def trigger_command(self, command_name: str) -> None:
+        inp = self.query_one("#cmd-input", Input)
+        label = self.query_one("#input-label", Static)
+        if command_name == _RUN_SENTINEL:
+            label.update("Type a kubebox command and press Enter  •  Esc to cancel")
+            inp.value = ""
+            inp.cursor_position = 0
+            self.query_one("#input-bar").add_class("active")
+            inp.focus()
+            return
         cmd = self._commands.get(command_name)
         if cmd and _has_required_args(cmd.callback):
+            label.update(
+                "Edit the command below and press Enter to run  •  Esc to cancel"
+            )
             hint = _usage_hint(command_name, cmd.callback)
-            inp = self.query_one("#cmd-input", Input)
             inp.value = hint
             inp.cursor_position = len(hint)
             self.query_one("#input-bar").add_class("active")
@@ -204,8 +219,25 @@ class K8sToolApp(App):
     def on_input_submitted(self, event: Input.Submitted) -> None:
         raw = event.value.strip()
         self.query_one("#input-bar").remove_class("active")
-        if raw:
-            self._run_raw(raw)
+        if not raw:
+            return
+        try:
+            parts = shlex.split(raw)
+        except ValueError:
+            out = self.query_one("#output-area", RichLog)
+            out.clear()
+            out.write("[bold red]Error:[/bold red] Invalid command syntax.")
+            return
+        if parts[0] not in self._commands:
+            out = self.query_one("#output-area", RichLog)
+            out.clear()
+            known = "  ".join(sorted(self._commands))
+            out.write(
+                f"[bold red]Unknown command:[/bold red] [cyan]{parts[0]}[/cyan]\n\n"
+                f"[dim]Available commands:[/dim] {known}"
+            )
+            return
+        self._run_raw(raw)
 
     def _run_raw(self, raw: str) -> None:
         out = self.query_one("#output-area", RichLog)

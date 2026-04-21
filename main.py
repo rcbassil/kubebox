@@ -11,6 +11,7 @@ from prompt_toolkit.history import FileHistory
 
 from core.kubernetes import (
     check_crashloop_pods,
+    check_deployments,
     check_all_objects,
     describe_object,
     check_logs,
@@ -54,6 +55,20 @@ def pods(
         Panel.fit(f"[bold cyan]Running K8s Pod Diagnostic{msg}...[/bold cyan]")
     )
     check_crashloop_pods(namespace)
+
+
+@app.command()
+def deployments(
+    namespace: str = typer.Option(
+        None, "--namespace", "-n", help="Filter by a specific namespace."
+    ),
+):
+    """Scan the K8s cluster for degraded or unavailable deployments."""
+    msg = f" in namespace '{namespace}'" if namespace else ""
+    console.print(
+        Panel.fit(f"[bold cyan]Running K8s Deployment Diagnostic{msg}...[/bold cyan]")
+    )
+    check_deployments(namespace)
 
 
 @app.command(name="all")

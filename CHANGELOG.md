@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented here.
 
+## [0.7.0] — 2026-04-20
+
+### Added
+- **`deployments` command** — scans all namespaces (or a specific namespace with `-n`) for degraded deployments. Shows a failing table with Ready/Desired counts and a diagnostic tip for the first offender, then a full table of every deployment with Ready/Desired, Up-to-date, Available, and Age columns.
+- **Dashboard `run` entry** — a "run any command…" item pinned at the bottom of the TUI command list. Selecting it opens the input bar empty so any kubebox command (with arguments) can be typed and executed directly. Non-kubebox input is rejected with a clear error and the list of valid commands.
+
 ## [0.6.0] — 2026-04-20
 
 ### Added
