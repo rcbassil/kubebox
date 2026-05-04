@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 import anthropic
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 from kubernetes import client
 from kubernetes import config as k8s_config
 from rich.console import Console
@@ -600,6 +601,7 @@ _ns = sel_ns or ""
     tab_storage,
     tab_config,
     tab_gitops,
+    tab_graph,
     tab_ai,
 ) = st.tabs(
     [
@@ -610,6 +612,7 @@ _ns = sel_ns or ""
         "💾 Storage",
         "⚙️ Config",
         "🔮 GitOps",
+        "🕸️ Graph",
         "🤖 AI Assistant",
     ]
 )
@@ -959,6 +962,68 @@ with tab_gitops:
             with st.spinner("Checking CRDs…"):
                 out = run_diag(_crd_mod.check_crd_status, _ns or None)
             st.code(out, language="text")
+
+# ─── Graph ───────────────────────────────────────────────────────────────────
+
+with tab_graph:
+    st.header("Resource Graph")
+    st.caption(
+        "Interactive graph of K8s resources and their relationships. "
+        "Hover nodes for details. Drag to rearrange."
+    )
+
+    gcol1, gcol2, gcol3 = st.columns([1, 1, 2])
+    with gcol1:
+        graph_cm = st.checkbox("Include ConfigMaps", value=False, key="graph_cm")
+    with gcol2:
+        graph_sec = st.checkbox("Include Secrets", value=False, key="graph_sec")
+
+    if st.button("Build Graph", key="build_graph", type="primary"):
+        from core.graph import build_graph, render_graph
+
+        with st.spinner("Fetching resources and building graph…"):
+            G = build_graph(
+                namespace=_ns or None,
+                include_configmaps=graph_cm,
+                include_secrets=graph_sec,
+            )
+
+        if G.number_of_nodes() == 0:
+            st.warning("No resources found — is the cluster reachable?")
+        else:
+            kinds = {}
+            for _, attrs in G.nodes(data=True):
+                k = attrs.get("kind", "Unknown")
+                kinds[k] = kinds.get(k, 0) + 1
+
+            st.caption(
+                f"**{G.number_of_nodes()} nodes · {G.number_of_edges()} edges** — "
+                + " · ".join(f"{k}: {v}" for k, v in sorted(kinds.items()))
+            )
+
+            legend_cols = st.columns(6)
+            _LEGEND = [
+                ("Namespace", "#4a90d9"),
+                ("Node", "#27ae60"),
+                ("Deployment/STS/DS", "#8e44ad"),
+                ("Service", "#16a085"),
+                ("Pod (ok)", "#e67e22"),
+                ("Pod (failing)", "#e74c3c"),
+                ("Ingress", "#e84393"),
+                ("PVC/PV", "#f39c12"),
+                ("ConfigMap", "#7f8c8d"),
+                ("Secret", "#566573"),
+            ]
+            for i, (label, color) in enumerate(_LEGEND):
+                legend_cols[i % 6].markdown(
+                    f'<span style="color:{color}">■</span> {label}',
+                    unsafe_allow_html=True,
+                )
+
+            with st.spinner("Rendering…"):
+                html = render_graph(G, height=720)
+
+            components.html(html, height=740, scrolling=False)
 
 # ─── AI Assistant ────────────────────────────────────────────────────────────
 

@@ -84,9 +84,32 @@ Then open [http://localhost:8501](http://localhost:8501) in your browser.
 | **💾 Storage** | PVCs (bound/unbound status), PVs, StorageClasses |
 | **⚙️ Config** | ConfigMaps, Secrets (names and types only — values never shown) |
 | **🔮 GitOps** | Flux CD status, Helm releases, CRD condition check |
+| **🕸️ Graph** | Interactive resource graph — nodes colored by kind, edges showing `manages`, `selects`, `routes_to`, `runs_on`, `mounts`, and `bound_to` relationships; optional ConfigMap/Secret inclusion; failing pods highlighted in red |
 | **🤖 AI Assistant** | Chat interface — automatically gathers failing pods and recent warning events as context, streams Claude responses |
 
 All K8s data is cached per context+namespace with a 20–60 second TTL. The AI assistant requires `ANTHROPIC_API_KEY`.
+
+### Screenshots
+
+**Cluster Overview**
+
+![Overview tab](doc/kubebox_screenshot2.png)
+
+**Cluster Health Report**
+
+![Health report](doc/kubebox_screenshot3.png)
+
+![Health report issues](doc/kubebox_screenshot4.png)
+
+**Resource Graph**
+
+![Graph tab](doc/kubebox_screenshot6.png)
+
+![Graph render](doc/kubebox_screenshot7.png)
+
+**AI Assistant**
+
+![AI Assistant](doc/kubebox_screenshot5.png)
 
 ## Building a Standalone Executable
 
