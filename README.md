@@ -116,10 +116,7 @@ All K8s data is cached per context+namespace with a 20–60 second TTL. The AI a
 Package the toolbox into a single binary using [PyInstaller](https://pyinstaller.org/):
 
 ```bash
-# Install PyInstaller (once)
-uv add --dev pyinstaller
-
-# Build (bundles streamlit_app.py and the core package automatically)
+# Build (syncs dependencies, installs PyInstaller, and bundles the binary)
 make build
 
 # Run or install globally
