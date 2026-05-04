@@ -1,6 +1,6 @@
 # kubebox
 
-A standalone, read-only Python CLI designed to act as an AI-powered DevOps/SRE assistant for troubleshooting Kubernetes clusters. It automatically gathers diagnostics, analyzes states, and highlights failures across Kubernetes, FluxCD, Kong, Helm, and HashiCorp Vault — and can stream AI root-cause analysis via Claude — without making any modifications to the cluster.
+A standalone, read-only Python toolbox designed to act as an AI-powered DevOps/SRE assistant for troubleshooting Kubernetes clusters. Available as a **CLI**, a **terminal UI dashboard**, and a **Streamlit web dashboard**. It automatically gathers diagnostics, analyzes states, and highlights failures across Kubernetes, FluxCD, Kong, Helm, and HashiCorp Vault — and can stream AI root-cause analysis via Claude — without making any modifications to the cluster.
 
 > **Smart auto-execution:** When a diagnostic tip suggests a `kubectl describe` or `kubectl logs` command, the tool runs it automatically and prints the output inline — no copy-pasting required.
 
@@ -50,9 +50,43 @@ uv sync
 
 ## Running
 
+**CLI:**
 ```bash
 uv run main.py --help
 ```
+
+**Terminal UI dashboard:**
+```bash
+uv run main.py dashboard
+```
+
+**Streamlit web dashboard:**
+```bash
+uv run streamlit run streamlit_app.py
+```
+
+Then open [http://localhost:8501](http://localhost:8501) in your browser.
+
+## Web Dashboard
+
+`streamlit_app.py` provides a browser-based alternative to the TUI. It reads the same kubeconfig and uses the same core diagnostic modules.
+
+**Sidebar** — context selector (all kubeconfig contexts), namespace selector (live from the cluster), and a one-click cache refresh.
+
+**Tabs:**
+
+| Tab | Contents |
+|-----|----------|
+| **📊 Overview** | Metrics cards (pods, failing pods, nodes, ready nodes), nodes table, failing pods table, full health report generator |
+| **🫙 Pods** | Filterable pod table (failing-only toggle + name search), live log fetcher, `kubectl describe` runner |
+| **🚀 Workloads** | Deployments, StatefulSets, DaemonSets, and Services sub-tabs; full workload diagnostic scan |
+| **📅 Events** | Filterable by type (Warning/Normal), reason substring, and row limit — warning rows highlighted |
+| **💾 Storage** | PVCs (bound/unbound status), PVs, StorageClasses |
+| **⚙️ Config** | ConfigMaps, Secrets (names and types only — values never shown) |
+| **🔮 GitOps** | Flux CD status, Helm releases, CRD condition check |
+| **🤖 AI Assistant** | Chat interface — automatically gathers failing pods and recent warning events as context, streams Claude responses |
+
+All K8s data is cached per context+namespace with a 20–60 second TTL. The AI assistant requires `ANTHROPIC_API_KEY`.
 
 ## Building a Standalone Executable
 
