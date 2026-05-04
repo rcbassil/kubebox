@@ -8,10 +8,6 @@ A standalone, read-only Python toolbox designed to act as an AI-powered DevOps/S
 
 > **Event-driven suggestions:** The `all` command analyzes warning events and automatically emits targeted command suggestions (with auto-execution for `describe` and `logs`) for each actionable issue found.
 
-## Screenshots
-
-![kubebox dashboard](doc/kubebox_screenshot.svg)
-
 ## Prerequisites
 
 - Python 3.12+
@@ -193,6 +189,8 @@ Launches a full-screen terminal UI with a command list on the left and scrollabl
 ```bash
 kubebox dashboard
 ```
+
+![kubebox dashboard](doc/kubebox_screenshot.svg)
 
 Keybindings: `s` focus output · `l` focus list · `h` toggle history · `m` toggle metrics · `c` edit context · `n` edit namespace · `y` copy output · `p` focus fixes · `r` re-run · `Esc` cancel/stop stream · `q` quit.
 
