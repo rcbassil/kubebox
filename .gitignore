@@ -9,6 +9,9 @@ wheels/
 # Virtual environments
 .venv
 
+# IDE
+.vscode/
+
 # Pyvis-generated assets
 lib/
 
